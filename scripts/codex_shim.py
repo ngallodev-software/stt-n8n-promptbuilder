@@ -28,13 +28,13 @@ import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
-def _run_codex(prompt: str, *, binary: str, model: str | None, reasoning_effort: str) -> str:
-    cmd = [binary, "exec", "--full-auto"]
+def _run_codex(prompt: str, *, binary: str, model: str | None, reasoning_effort: str, workdir: str = "/tmp") -> str:
+    cmd = [binary, "exec", "--full-auto", "--skip-git-repo-check", "--cd", workdir]
     if model:
         cmd.extend(["-m", model])
     cmd.extend(["-c", f'model_reasoning_effort="{reasoning_effort}"'])
     cmd.append(prompt)
-    result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=300, stdin=subprocess.DEVNULL)
     return result.stdout.strip()
 
 

@@ -1,0 +1,23 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install Node.js 22 (LTS) for the codex CLI
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install codex CLI globally
+ARG CODEX_VERSION=latest
+RUN npm install -g @openai/codex@${CODEX_VERSION} --no-audit --no-fund
+
+COPY scripts/codex_shim.py ./codex_shim.py
+
+EXPOSE 8765
+
+CMD ["python3", "codex_shim.py", "--host", "0.0.0.0", "--port", "8765", "--codex", "codex"]

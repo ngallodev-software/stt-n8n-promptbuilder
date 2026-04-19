@@ -1412,26 +1412,17 @@ def patch_prompt_priority(prompt_generation_id: str, payload: PromptPriorityRequ
 
 @router.post("/llm/assist", response_model=LLMAssistResponse)
 def llm_assist(payload: LLMAssistRequest) -> LLMAssistResponse:
-    router = get_llm_router()
-    if not router.enabled:
+    llm_router = get_llm_router()
+    if not llm_router.enabled:
         return LLMAssistResponse(result="LLM not enabled. Set PROMPTFORGE_LLM_ENABLED=true.", available=False)
 
-    result = router.generate_structured(
-        payload.prompt,
-        schema_name="assist",
-        context={**(payload.context or {}), "context_type": payload.context_type},
-    )
-    if result is None:
-        review = router.review_prompt(payload.prompt, context=payload.context)
-        if review is None:
-            return LLMAssistResponse(result="No configured LLM provider available.", available=False)
-        polished = (review.raw_response or {}).get("polished_prompt")
-        text = polished or review.summary or ""
-        return LLMAssistResponse(result=text, provider=review.provider_name, model=review.model_name)
-
-    import json as _json
-    text = _json.dumps(result.structured_payload, indent=2, ensure_ascii=False)
-    return LLMAssistResponse(result=text, provider=result.provider_name, model=result.model_name)
+    context = {**(payload.context or {}), "context_type": payload.context_type}
+    review = llm_router.review_prompt(payload.prompt, context=context)
+    if review is None:
+        return LLMAssistResponse(result="No configured LLM provider available.", available=False)
+    polished = (review.raw_response or {}).get("polished_prompt")
+    text = polished or review.summary or ""
+    return LLMAssistResponse(result=text, provider=review.provider_name, model=review.model_name)
 
 
 @router.patch("/intake/{intake_note_id}/archive")
