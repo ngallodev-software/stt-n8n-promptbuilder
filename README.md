@@ -66,6 +66,7 @@ The repo includes a root Docker Compose stack for local development and self-hos
 
 - `promptforge-api`
 - `promptforge-watcher`
+- `promptforge-console`
 - `postgres`
 - `n8n`
 
@@ -106,16 +107,32 @@ If you want to re-run just the database schema migration:
 ### 4) Useful endpoints
 
 - API: `http://localhost:8090/health`
+- Console: `http://localhost:5173`
 - n8n: `http://localhost:5678/`
 
 ## API Endpoints
 
 - `GET /health`
+- `GET /_healthz`
 - `POST /preprocess`
 - `POST /validate`
 - `POST /render`
 - `POST /prepare-delivery`
 - `GET /providers/health` for optional LLM provider status
+
+Console integration endpoints:
+
+- `GET /console/bootstrap`
+- `POST /console/deliveries/{id}/retry`
+- `POST /console/deliveries/{id}/reroute`
+- `PATCH /console/deliveries/{id}/status`
+- `PATCH /console/rules/{id}`
+- `POST /console/dictionary/upsert`
+- `POST /console/templates/{id}/activate`
+- `POST /console/prompts/{id}/force-review`
+- `POST /console/prompts/{id}/clone`
+- `PATCH /console/prompts/{id}/priority`
+- `PATCH /console/intake/{id}/archive`
 
 ## Optional LLM Support
 

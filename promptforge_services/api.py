@@ -21,6 +21,7 @@ from promptforge_services.pipeline import (
     llm_providers_health,
     validate_request,
 )
+from promptforge_services.console_api import router as console_router
 
 app = FastAPI(title="PromptForge Services")
 _http_logger = logging.getLogger("promptforge.http")
@@ -85,3 +86,6 @@ def prepare_delivery(payload: PrepareDeliveryRequest) -> PrepareDeliveryResponse
         return prepare_delivery_request(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+app.include_router(console_router)
