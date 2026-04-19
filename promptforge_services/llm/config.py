@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Mapping
 
+from typing import cast
+
 from pydantic import BaseModel, Field
 
 from promptforge_services.models import LLMMode
@@ -80,6 +82,9 @@ class LLMSettings(BaseModel):
     ollama_base_url: str | None = "http://localhost:11434"
     ollama_api_key: str | None = None
     ollama_model: str | None = None
+    codex_binary: str = "codex"
+    codex_model: str | None = None
+    codex_reasoning_effort: str = "medium"
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "LLMSettings":
@@ -87,8 +92,7 @@ class LLMSettings(BaseModel):
         fallback_providers = _split_csv(source.get("PROMPTFORGE_LLM_FALLBACK_PROVIDERS"))
         return cls(
             enabled=_env_bool(source.get("PROMPTFORGE_LLM_ENABLED"), default=False),
-            mode=source.get("PROMPTFORGE_LLM_MODE", "deterministic_only").strip()
-            or "deterministic_only",
+            mode=cast(LLMMode, source.get("PROMPTFORGE_LLM_MODE", "deterministic_only").strip() or "deterministic_only"),
             review_provider=_string_or_none(source.get("PROMPTFORGE_LLM_REVIEW_PROVIDER")),
             inference_provider=_string_or_none(source.get("PROMPTFORGE_LLM_INFERENCE_PROVIDER")),
             fallback_providers=fallback_providers or DEFAULT_FALLBACK_PROVIDERS,
@@ -107,4 +111,7 @@ class LLMSettings(BaseModel):
             ollama_base_url=_string_or_none(source.get("PROMPTFORGE_OLLAMA_BASE_URL")) or "http://localhost:11434",
             ollama_api_key=_string_or_none(source.get("PROMPTFORGE_OLLAMA_API_KEY")),
             ollama_model=_string_or_none(source.get("PROMPTFORGE_OLLAMA_MODEL")),
+            codex_binary=_string_or_none(source.get("PROMPTFORGE_CODEX_BINARY")) or "codex",
+            codex_model=_string_or_none(source.get("PROMPTFORGE_CODEX_MODEL")),
+            codex_reasoning_effort=_string_or_none(source.get("PROMPTFORGE_CODEX_REASONING_EFFORT")) or "medium",
         )

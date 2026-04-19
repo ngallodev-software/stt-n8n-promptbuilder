@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -58,6 +60,8 @@ class LLMProvider(Protocol):
         schema_name: str,
         context: dict[str, Any] | None = None,
     ) -> LLMGenerationResult: ...
+
+    def configured(self) -> bool: ...
 
     def supports(self, task_kind: LLMTaskKind) -> bool: ...
 
@@ -512,3 +516,148 @@ class OllamaProvider(OpenAICompatibleProvider):
 
     def configured(self) -> bool:
         return bool(self.base_url and self.model_name)
+
+
+_CODEX_POLISH_WRAPPER = (
+    "Polish the following agent task prompt. Return ONLY the improved markdown.\n\n"
+    "---\n\n{prompt}"
+)
+
+
+class CodexExecProvider(BaseLLMProvider):
+    """Shells out to the `codex` CLI binary via `codex exec --full-auto`."""
+
+    def __init__(
+        self,
+        *,
+        binary: str = "codex",
+        model_name: str | None = None,
+        reasoning_effort: str = "medium",
+        timeout_seconds: float = 120.0,
+        max_retries: int = 1,
+    ) -> None:
+        super().__init__(
+            provider_name="codex_exec",
+            provider_family="codex",
+            model_name=model_name or "codex",
+            base_url=None,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+        self.binary = binary
+        self.reasoning_effort = reasoning_effort
+
+    @classmethod
+    def from_settings(
+        cls,
+        *,
+        binary: str,
+        model_name: str | None,
+        reasoning_effort: str,
+        timeout_seconds: float,
+        max_retries: int,
+    ) -> "CodexExecProvider":
+        return cls(
+            binary=binary,
+            model_name=model_name,
+            reasoning_effort=reasoning_effort,
+            timeout_seconds=timeout_seconds,
+            max_retries=max_retries,
+        )
+
+    def configured(self) -> bool:
+        return bool(shutil.which(self.binary))
+
+    def health_check(self) -> LLMProviderHealth:
+        resolved = shutil.which(self.binary)
+        configured = bool(resolved)
+        return LLMProviderHealth(
+            provider_name=self.provider_name,
+            provider_family=self.provider_family,
+            configured=configured,
+            available=configured,
+            model_name=self.model_name,
+            base_url=resolved,
+            detail=None if configured else f"binary '{self.binary}' not found in PATH",
+        )
+
+    def review_prompt(
+        self,
+        prompt_markdown: str,
+        *,
+        context: dict[str, Any] | None = None,
+    ) -> LLMReviewResult:
+        full_prompt = _CODEX_POLISH_WRAPPER.format(prompt=prompt_markdown.strip())
+        if context:
+            full_prompt += f"\n\nContext:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}"
+
+        polished = self._run_codex(full_prompt)
+        return LLMReviewResult(
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            summary="prompt_polished",
+            findings=("codex_exec_polish",),
+            raw_response={"polished_prompt": polished},
+        )
+
+    def generate_structured(
+        self,
+        prompt_markdown: str,
+        *,
+        schema_name: str,
+        context: dict[str, Any] | None = None,
+    ) -> LLMGenerationResult:
+        full_prompt = prompt_markdown.strip()
+        if context:
+            full_prompt += f"\n\nContext:\n{json.dumps(context, ensure_ascii=False, sort_keys=True)}"
+
+        output = self._run_codex(full_prompt)
+        parsed = OpenAICompatibleProvider._extract_json_object(output)
+        if not isinstance(parsed, dict):
+            raise LLMProviderUnavailableError(
+                f"codex_exec did not return a JSON object for schema {schema_name}"
+            )
+        return LLMGenerationResult(
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            structured_payload=parsed,
+            raw_response={"raw_output": output},
+        )
+
+    def _run_codex(self, prompt: str) -> str:
+        if not self.configured():
+            raise LLMProviderUnavailableError(f"codex binary '{self.binary}' not found in PATH")
+
+        cmd = [self.binary, "exec", "--full-auto"]
+        if self.model_name and self.model_name != "codex":
+            cmd.extend(["-m", self.model_name])
+        cmd.extend(["-c", f'model_reasoning_effort="{self.reasoning_effort}"'])
+        cmd.append(prompt)
+
+        start = time.monotonic()
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                result = subprocess.run(
+                    cmd,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=self.timeout_seconds,
+                )
+                elapsed = max(0, int((time.monotonic() - start) * 1000))
+                _ = elapsed  # latency available if needed
+                return result.stdout.strip()
+            except subprocess.CalledProcessError as exc:
+                last_error = exc
+                if attempt >= self.max_retries:
+                    break
+                time.sleep(min(0.5 * (2**attempt), 2.0))
+            except subprocess.TimeoutExpired as exc:
+                raise LLMProviderUnavailableError(
+                    f"codex_exec timed out after {self.timeout_seconds}s"
+                ) from exc
+
+        raise LLMProviderUnavailableError(
+            f"codex_exec failed after {self.max_retries + 1} attempts"
+        ) from last_error

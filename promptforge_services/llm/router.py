@@ -10,6 +10,7 @@ from promptforge_services.llm.config import (
 )
 from promptforge_services.llm.providers import (
     AnthropicProvider,
+    CodexExecProvider,
     LLMGenerationResult,
     LLMProvider,
     LLMProviderUnavailableError,
@@ -140,6 +141,13 @@ class LLMRouter:
             base_url=settings.ollama_base_url,
             api_key=settings.ollama_api_key,
             model_name=settings.ollama_model or settings.default_model,
+            timeout_seconds=settings.timeout_seconds,
+            max_retries=settings.max_retries,
+        )
+        providers["codex_exec"] = CodexExecProvider.from_settings(
+            binary=settings.codex_binary,
+            model_name=settings.codex_model,
+            reasoning_effort=settings.codex_reasoning_effort,
             timeout_seconds=settings.timeout_seconds,
             max_retries=settings.max_retries,
         )

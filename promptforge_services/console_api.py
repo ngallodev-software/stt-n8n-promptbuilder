@@ -59,6 +59,7 @@ from promptforge_services.console_models import (
     TranscriptRevisionRecord,
     UtteranceRecord,
 )
+from promptforge_services.llm.router import get_llm_router
 from promptforge_services.pipeline import llm_providers_health
 
 router = APIRouter(prefix="/console", tags=["console"])
@@ -86,6 +87,19 @@ RequestModelT = TypeVar("RequestModelT", bound=StrictBaseModel)
 
 class DeliveryRerouteRequest(StrictBaseModel):
     targetId: str
+
+
+class LLMAssistRequest(StrictBaseModel):
+    prompt: str
+    context_type: str = "general"
+    context: dict[str, Any] | None = None
+
+
+class LLMAssistResponse(StrictBaseModel):
+    result: str
+    provider: str | None = None
+    model: str | None = None
+    available: bool = True
 
 
 def raise_400(detail: str) -> HTTPException:
@@ -145,6 +159,16 @@ def _to_iso(value: Any) -> str:
     if isinstance(value, datetime):
         return value.astimezone(timezone.utc).isoformat()
     return datetime.now(timezone.utc).isoformat()
+
+
+def _as_str(value: Any) -> str:
+    return str(value)
+
+
+def _as_optional_str(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
 
 
 def _build_logs(
@@ -475,7 +499,7 @@ def _where_sql(clauses: list[str]) -> str:
 
 def _project_record(row: dict[str, Any]) -> ProjectRecord:
     return ProjectRecord(
-        id=row["id"],
+        id=_as_str(row["id"]),
         name=row["name"],
         slug=row["slug"],
         description=row.get("description"),
@@ -486,12 +510,12 @@ def _project_record(row: dict[str, Any]) -> ProjectRecord:
 
 def _intake_note_record(row: dict[str, Any]) -> IntakeNoteRecord:
     return IntakeNoteRecord(
-        id=row["id"],
-        project_id=row.get("project_id"),
+        id=_as_str(row["id"]),
+        project_id=_as_optional_str(row.get("project_id")),
         note_relative_path=row["note_relative_path"],
         status=row["status"],
         watch_eligible=bool(row["watch_eligible"]),
-        source_device=row["source_device"],
+        source_device=row.get("source_device") or "",
         body_text=row.get("body_text") or "",
         frontmatter_original=row.get("frontmatter_original") or {},
         frontmatter_current=row.get("frontmatter_current") or {},
@@ -503,11 +527,11 @@ def _intake_note_record(row: dict[str, Any]) -> IntakeNoteRecord:
 
 def _utterance_record(row: dict[str, Any]) -> UtteranceRecord:
     return UtteranceRecord(
-        id=row["id"],
-        intake_note_id=row["intake_note_id"],
+        id=_as_str(row["id"]),
+        intake_note_id=_as_str(row["intake_note_id"]),
         raw_text=row["raw_text"],
         directive_text=row.get("directive_text"),
-        project_id=row.get("project_id"),
+        project_id=_as_optional_str(row.get("project_id")),
         scope=row["scope"],
         capture_type=row["capture_type"],
         created_at=_to_iso(row["created_at"]),
@@ -516,8 +540,8 @@ def _utterance_record(row: dict[str, Any]) -> UtteranceRecord:
 
 def _transcript_revision_record(row: dict[str, Any]) -> TranscriptRevisionRecord:
     return TranscriptRevisionRecord(
-        id=row["id"],
-        utterance_id=row["utterance_id"],
+        id=_as_str(row["id"]),
+        utterance_id=_as_str(row["utterance_id"]),
         revision_kind=row["revision_kind"],
         content_text=row["content_text"],
         producer_type=row["producer_type"],
@@ -531,13 +555,13 @@ def _transcript_revision_record(row: dict[str, Any]) -> TranscriptRevisionRecord
 
 def _prompt_generation_record(row: dict[str, Any]) -> PromptGenerationRecord:
     return PromptGenerationRecord(
-        id=row["id"],
-        intake_note_id=row["intake_note_id"],
+        id=_as_str(row["id"]),
+        intake_note_id=_as_str(row["intake_note_id"]),
         status=row["status"],
         requires_review=bool(row["requires_review"]),
         prompt_type=row["prompt_type"],
-        ruleset_id=row.get("ruleset_id"),
-        template_id=row.get("template_id"),
+        ruleset_id=_as_optional_str(row.get("ruleset_id")),
+        template_id=_as_optional_str(row.get("template_id")),
         destination=row["destination"],
         mode=row["mode"],
         priority=row["priority"],
@@ -551,9 +575,9 @@ def _prompt_generation_record(row: dict[str, Any]) -> PromptGenerationRecord:
 
 def _delivery_record(row: dict[str, Any]) -> DeliveryRecord:
     return DeliveryRecord(
-        id=row["id"],
-        prompt_generation_id=row["prompt_generation_id"],
-        target_id=row.get("target_id"),
+        id=_as_str(row["id"]),
+        prompt_generation_id=_as_str(row["prompt_generation_id"]),
+        target_id=_as_optional_str(row.get("target_id")),
         status=row["status"],
         destination=row["destination"],
         mode=row["mode"],
@@ -568,8 +592,8 @@ def _delivery_record(row: dict[str, Any]) -> DeliveryRecord:
 
 def _processing_run_record(row: dict[str, Any]) -> ProcessingRunRecord:
     return ProcessingRunRecord(
-        id=row["id"],
-        intake_note_id=row["intake_note_id"],
+        id=_as_str(row["id"]),
+        intake_note_id=_as_str(row["intake_note_id"]),
         status=row["status"],
         stage_name=row["stage_name"],
         error_text=row.get("error_text"),
@@ -581,10 +605,10 @@ def _processing_run_record(row: dict[str, Any]) -> ProcessingRunRecord:
 
 def _ruleset_record(row: dict[str, Any]) -> RuleSetRecord:
     return RuleSetRecord(
-        id=row["id"],
+        id=_as_str(row["id"]),
         name=row["name"],
         scope=row["scope"],
-        project_id=row.get("project_id"),
+        project_id=_as_optional_str(row.get("project_id")),
         active=bool(row["active"]),
         description=row.get("description"),
         updated_at=_to_iso(row["updated_at"]),
@@ -593,8 +617,8 @@ def _ruleset_record(row: dict[str, Any]) -> RuleSetRecord:
 
 def _rule_record(row: dict[str, Any]) -> RuleRecord:
     return RuleRecord(
-        id=row["id"],
-        ruleset_id=row["ruleset_id"],
+        id=_as_str(row["id"]),
+        ruleset_id=_as_str(row["ruleset_id"]),
         name=row["name"],
         rule_type=row["rule_type"],
         priority=int(row["priority"]),
@@ -608,9 +632,9 @@ def _rule_record(row: dict[str, Any]) -> RuleRecord:
 
 def _dictionary_term_record(row: dict[str, Any]) -> DictionaryTermRecord:
     return DictionaryTermRecord(
-        id=row["id"],
+        id=_as_str(row["id"]),
         scope=row["scope"],
-        project_id=row.get("project_id"),
+        project_id=_as_optional_str(row.get("project_id")),
         source_term=row["source_term"],
         normalized_term=row["normalized_term"],
         description=row.get("description"),
@@ -621,11 +645,11 @@ def _dictionary_term_record(row: dict[str, Any]) -> DictionaryTermRecord:
 
 def _prompt_template_record(row: dict[str, Any]) -> PromptTemplateRecord:
     return PromptTemplateRecord(
-        id=row["id"],
+        id=_as_str(row["id"]),
         name=row["name"],
         prompt_type=row["prompt_type"],
         scope=row["scope"],
-        project_id=row.get("project_id"),
+        project_id=_as_optional_str(row.get("project_id")),
         version=int(row["version"]),
         is_active=bool(row["is_active"]),
         template_family_key=row["template_family_key"],
@@ -636,12 +660,12 @@ def _prompt_template_record(row: dict[str, Any]) -> PromptTemplateRecord:
 
 def _delivery_target_record(row: dict[str, Any]) -> DeliveryTargetRecord:
     return DeliveryTargetRecord(
-        id=row["id"],
+        id=_as_str(row["id"]),
         name=row["name"],
         target_type=row["target_type"],
         destination=row["destination"],
         scope=row["scope"],
-        project_id=row.get("project_id"),
+        project_id=_as_optional_str(row.get("project_id")),
         enabled=bool(row["enabled"]),
         is_sensitive=bool(row["is_sensitive"]),
         requires_confirmation=bool(row["requires_confirmation"]),
@@ -653,15 +677,15 @@ def _delivery_target_record(row: dict[str, Any]) -> DeliveryTargetRecord:
 
 def _log_record(row: dict[str, Any]) -> LogRecord:
     return LogRecord(
-        id=row["id"],
+        id=_as_str(row["id"]),
         service=row["service"],
         level=row["level"],
         message=row["message"],
         timestamp=_to_iso(row["timestamp"]),
-        intake_note_id=row.get("intake_note_id"),
-        utterance_id=row.get("utterance_id"),
-        prompt_generation_id=row.get("prompt_generation_id"),
-        delivery_id=row.get("delivery_id"),
+        intake_note_id=_as_optional_str(row.get("intake_note_id")),
+        utterance_id=_as_optional_str(row.get("utterance_id")),
+        prompt_generation_id=_as_optional_str(row.get("prompt_generation_id")),
+        delivery_id=_as_optional_str(row.get("delivery_id")),
         fields=row.get("fields") or {},
     )
 
@@ -1384,6 +1408,30 @@ def patch_prompt_priority(prompt_generation_id: str, payload: PromptPriorityRequ
     if updated == 0:
         raise raise_404("delivery_for_prompt_not_found")
     return {"ok": True}
+
+
+@router.post("/llm/assist", response_model=LLMAssistResponse)
+def llm_assist(payload: LLMAssistRequest) -> LLMAssistResponse:
+    router = get_llm_router()
+    if not router.enabled:
+        return LLMAssistResponse(result="LLM not enabled. Set PROMPTFORGE_LLM_ENABLED=true.", available=False)
+
+    result = router.generate_structured(
+        payload.prompt,
+        schema_name="assist",
+        context={**(payload.context or {}), "context_type": payload.context_type},
+    )
+    if result is None:
+        review = router.review_prompt(payload.prompt, context=payload.context)
+        if review is None:
+            return LLMAssistResponse(result="No configured LLM provider available.", available=False)
+        polished = (review.raw_response or {}).get("polished_prompt")
+        text = polished or review.summary or ""
+        return LLMAssistResponse(result=text, provider=review.provider_name, model=review.model_name)
+
+    import json as _json
+    text = _json.dumps(result.structured_payload, indent=2, ensure_ascii=False)
+    return LLMAssistResponse(result=text, provider=result.provider_name, model=result.model_name)
 
 
 @router.patch("/intake/{intake_note_id}/archive")

@@ -11,7 +11,9 @@ import yaml
 from watchdog.events import FileSystemEvent, FileSystemEventHandler, FileSystemMovedEvent
 from watchdog.observers import Observer
 
+from promptforge_services.llm.router import get_llm_router
 from promptforge_services.models import PrepareDeliveryRequest, RenderRequest
+from promptforge_watcher.models import StoredLLMRun
 from promptforge_services.pipeline import (
     parse_directives,
     prepare_delivery_request,
@@ -294,6 +296,27 @@ def _build_import_bundle(note: ParsedNote) -> ImportBundle:
             payload=preprocess.draft_structured_output.model_dump(),
         )
     )
+
+    llm_runs: list[StoredLLMRun] = []
+    router = get_llm_router()
+    if router.supports("review"):
+        start = time.monotonic()
+        review = router.review_prompt(render.final_prompt_markdown)
+        elapsed_ms = max(0, int((time.monotonic() - start) * 1000))
+        if review is not None:
+            polished = (review.raw_response or {}).get("polished_prompt")
+            if polished and isinstance(polished, str) and polished.strip():
+                render = render.model_copy(update={"final_prompt_markdown": polished.strip()})
+            llm_runs.append(StoredLLMRun(
+                provider_name=review.provider_name,
+                model_name=review.model_name,
+                mode="review",
+                latency_ms=review.latency_ms or elapsed_ms,
+                summary=review.summary,
+                findings_json=list(review.findings) if review.findings else None,
+                raw_response_json=review.raw_response,
+            ))
+
     delivery = prepare_delivery_request(
         PrepareDeliveryRequest(
             contract_name="agent_task_v1",
@@ -301,7 +324,7 @@ def _build_import_bundle(note: ParsedNote) -> ImportBundle:
             priority=str(note.frontmatter.get("priority", "normal")),
         )
     )
-    return ImportBundle(note=note, preprocess=preprocess, render=render, delivery=delivery)
+    return ImportBundle(note=note, preprocess=preprocess, render=render, delivery=delivery, llm_runs=llm_runs)
 
 
 def _split_frontmatter(raw_text: str) -> tuple[dict, str]:
