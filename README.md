@@ -104,6 +104,13 @@ If you want to re-run just the database schema migration:
 ./scripts/migrate_postgres.sh
 ```
 
+If you need to backfill any legacy plaintext console secrets after enabling
+`PROMPTFORGE_SECRETS_MASTER_KEY`:
+
+```bash
+python3 scripts/migrate_console_secrets.py
+```
+
 ### 4) Useful endpoints
 
 - API: `http://localhost:8090/health`
@@ -179,6 +186,8 @@ Event handling behavior:
 Main watcher environment variables:
 
 - `PROMPTFORGE_DATABASE_URL` (optional): enable Postgres persistence.
+- `PROMPTFORGE_SECRETS_MASTER_KEY` (recommended for console secret rotation): Fernet-compatible base64 key used to encrypt backend-managed secrets before DB storage.
+- `PROMPTFORGE_SECRETS_KEY_VERSION` (default: `1`): version tag stored with encrypted console secrets for future rotation workflows.
 - `PROMPTFORGE_VAULT_PATH` (default: `/vault`): vault root path.
 - `PROMPTFORGE_WATCH_FOLDER` (default: `Inbox/Voice`): intake folder.
 - `PROMPTFORGE_PROCESSED_FOLDER` (default: `Processed/Voice`): writeback folder.

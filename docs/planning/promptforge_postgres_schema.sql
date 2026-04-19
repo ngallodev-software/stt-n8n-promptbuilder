@@ -498,6 +498,117 @@ CREATE INDEX IF NOT EXISTS idx_processing_runs_status
     ON processing_runs(status);
 
 -- ----------------------------------------------------------------------------
+-- Console runtime settings and admin audit
+-- ----------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS console_runtime_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope pf_scope NOT NULL,
+    project_id UUID NULL REFERENCES projects(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    value_json JSONB NOT NULL,
+    updated_by_user_id TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_console_runtime_settings_key_nonempty CHECK (length(trim(key)) > 0),
+    CONSTRAINT chk_console_runtime_settings_scope_project CHECK (
+        (scope = 'project' AND project_id IS NOT NULL)
+        OR (scope <> 'project' AND project_id IS NULL)
+    ),
+    UNIQUE(scope, project_id, key)
+);
+
+DROP TRIGGER IF EXISTS trg_console_runtime_settings_updated_at ON console_runtime_settings;
+CREATE TRIGGER trg_console_runtime_settings_updated_at
+BEFORE UPDATE ON console_runtime_settings
+FOR EACH ROW
+EXECUTE FUNCTION pf_set_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_console_runtime_settings_scope_project
+    ON console_runtime_settings(scope, project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_console_runtime_settings_global_key
+    ON console_runtime_settings(scope, key)
+    WHERE project_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_console_runtime_settings_project_key
+    ON console_runtime_settings(scope, project_id, key)
+    WHERE project_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS console_secret_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scope pf_scope NOT NULL,
+    project_id UUID NULL REFERENCES projects(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    secret_value TEXT NULL,
+    secret_ciphertext TEXT NULL,
+    secret_key_version INTEGER NULL,
+    configured BOOLEAN NOT NULL DEFAULT FALSE,
+    last_rotated_at TIMESTAMPTZ NULL,
+    updated_by_user_id TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_console_secret_settings_key_nonempty CHECK (length(trim(key)) > 0),
+    CONSTRAINT chk_console_secret_settings_scope_project CHECK (
+        (scope = 'project' AND project_id IS NOT NULL)
+        OR (scope <> 'project' AND project_id IS NULL)
+    ),
+    CONSTRAINT chk_console_secret_settings_ciphertext_version CHECK (
+        (secret_ciphertext IS NULL AND secret_key_version IS NULL)
+        OR (secret_ciphertext IS NOT NULL AND secret_key_version IS NOT NULL AND secret_key_version > 0)
+    ),
+    UNIQUE(scope, project_id, key)
+);
+
+ALTER TABLE console_secret_settings
+    ADD COLUMN IF NOT EXISTS secret_ciphertext TEXT NULL;
+ALTER TABLE console_secret_settings
+    ADD COLUMN IF NOT EXISTS secret_key_version INTEGER NULL;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'chk_console_secret_settings_ciphertext_version'
+    ) THEN
+        ALTER TABLE console_secret_settings
+        ADD CONSTRAINT chk_console_secret_settings_ciphertext_version CHECK (
+            (secret_ciphertext IS NULL AND secret_key_version IS NULL)
+            OR (secret_ciphertext IS NOT NULL AND secret_key_version IS NOT NULL AND secret_key_version > 0)
+        );
+    END IF;
+END $$;
+
+DROP TRIGGER IF EXISTS trg_console_secret_settings_updated_at ON console_secret_settings;
+CREATE TRIGGER trg_console_secret_settings_updated_at
+BEFORE UPDATE ON console_secret_settings
+FOR EACH ROW
+EXECUTE FUNCTION pf_set_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_console_secret_settings_scope_project
+    ON console_secret_settings(scope, project_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_console_secret_settings_global_key
+    ON console_secret_settings(scope, key)
+    WHERE project_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_console_secret_settings_project_key
+    ON console_secret_settings(scope, project_id, key)
+    WHERE project_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS console_admin_audit_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    scope pf_scope NULL,
+    project_id UUID NULL REFERENCES projects(id) ON DELETE SET NULL,
+    payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT chk_console_admin_audit_log_action_nonempty CHECK (length(trim(action)) > 0),
+    CONSTRAINT chk_console_admin_audit_log_actor_nonempty CHECK (length(trim(actor)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_console_admin_audit_log_action_created_at
+    ON console_admin_audit_log(action, created_at DESC);
+
+-- ----------------------------------------------------------------------------
 -- Optional: materialized helper views for querying latest state
 -- ----------------------------------------------------------------------------
 

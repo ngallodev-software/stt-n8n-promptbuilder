@@ -5,7 +5,14 @@ from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from promptforge_services.models import Destination, DeliveryStatus as DeliveryStatusValue, Mode, PromptType, TargetType
+from promptforge_services.models import (
+    Destination,
+    DeliveryStatus as DeliveryStatusValue,
+    LLMMode,
+    Mode,
+    PromptType,
+    TargetType,
+)
 
 RecordScope = Literal["global", "user", "project"]
 NoteStatus = Literal["new", "imported", "processing", "processed", "error", "archived"]
@@ -31,6 +38,8 @@ PriorityLevel = Literal["low", "normal", "high", "urgent"]
 CaptureType = Literal["voice", "text", "import"]
 RuleType = Literal["cleanup", "expansion", "routing", "formatting", "safety", "terminology"]
 LogLevel = Literal["debug", "info", "warn", "error"]
+ConsoleRole = Literal["viewer", "operator", "admin"]
+CodexReasoningEffort = Literal["low", "medium", "high"]
 
 
 class Scope(str, Enum):
@@ -56,6 +65,12 @@ class Priority(str, Enum):
     NORMAL = "normal"
     HIGH = "high"
     URGENT = "urgent"
+
+
+class ConsoleRoleValue(str, Enum):
+    VIEWER = "viewer"
+    OPERATOR = "operator"
+    ADMIN = "admin"
 
 
 class StrictBaseModel(BaseModel):
@@ -117,6 +132,68 @@ class PromptPriorityRequest(StrictBaseModel):
     @classmethod
     def _validate_priority(cls, value: Any) -> Priority:
         return _coerce_enum(Priority, value)
+
+
+class ConsoleRuntimeSettings(StrictBaseModel):
+    obsidianVaultPath: str
+    webhookUrl: str
+    llmMode: LLMMode
+    codexBinary: str
+    codexReasoningEffort: CodexReasoningEffort
+    openaiBaseUrl: str
+    anthropicBaseUrl: str
+
+
+class SecretSettingMetadata(StrictBaseModel):
+    configured: bool
+    last_rotated_at: str | None = None
+
+
+class ConsoleSettingsPermissions(StrictBaseModel):
+    can_update_runtime: bool
+    can_rotate_secrets: bool
+    can_purge_archived_notes: bool
+
+
+class ConsoleSettingsResponse(StrictBaseModel):
+    scope: Scope
+    project_id: str | None = None
+    runtime: ConsoleRuntimeSettings
+    secrets: dict[str, SecretSettingMetadata]
+    permissions: ConsoleSettingsPermissions
+    updated_at: str
+
+
+class ConsoleRuntimePatchRequest(StrictBaseModel):
+    scope: Scope = Scope.GLOBAL
+    project_id: str | None = None
+    runtime: dict[str, Any]
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def _validate_scope(cls, value: Any) -> Scope:
+        return _coerce_enum(Scope, value)
+
+
+class ConsoleSecretsPatchRequest(StrictBaseModel):
+    scope: Scope = Scope.GLOBAL
+    project_id: str | None = None
+    secrets: dict[str, str]
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def _validate_scope(cls, value: Any) -> Scope:
+        return _coerce_enum(Scope, value)
+
+
+class PurgeArchivedNotesRequest(StrictBaseModel):
+    confirm: str
+
+
+class PurgeArchivedNotesResponse(StrictBaseModel):
+    ok: bool = True
+    deleted_counts: dict[str, int] = Field(alias="deletedCounts")
+    requested_at: str = Field(alias="requestedAt")
 
 
 class PaginationMeta(StrictBaseModel):

@@ -1,17 +1,25 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar
+from urllib.parse import urlsplit
 
 import psycopg
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import Field, ValidationError
 from psycopg.rows import dict_row
 
 from promptforge_services import console_queries as cq
 from promptforge_services.console_models import (
+    ConsoleRoleValue,
+    ConsoleRuntimePatchRequest,
+    ConsoleRuntimeSettings,
+    ConsoleSecretsPatchRequest,
+    ConsoleSettingsPermissions,
+    ConsoleSettingsResponse,
     DictionaryTermDetailResponse,
     DictionaryTermListResponse,
     DictionaryTermRecord,
@@ -35,6 +43,8 @@ from promptforge_services.console_models import (
     PaginationMeta,
     ProcessingRunRecord,
     PromptPriorityRequest,
+    PurgeArchivedNotesRequest,
+    PurgeArchivedNotesResponse,
     ProjectDetailResponse,
     ProjectListResponse,
     ProjectRecord,
@@ -50,6 +60,8 @@ from promptforge_services.console_models import (
     RulePatchRequest,
     RuleRecord,
     RuleSetRecord,
+    Scope,
+    SecretSettingMetadata,
     RulesetDetailResponse,
     RulesetListResponse,
     SlaSummaryResponse,
@@ -59,8 +71,11 @@ from promptforge_services.console_models import (
     TranscriptRevisionRecord,
     UtteranceRecord,
 )
+from promptforge_services.llm.config import LLMSettings
 from promptforge_services.llm.router import get_llm_router
 from promptforge_services.pipeline import llm_providers_health
+from promptforge_services.secrets import SecretsEncryptionError, encrypt_secret
+from promptforge_watcher.config import WatcherConfig
 
 router = APIRouter(prefix="/console", tags=["console"])
 
@@ -76,6 +91,22 @@ VALID_PRIORITY_VALUES = {"low", "normal", "high", "urgent"}
 VALID_DESTINATIONS = {"chat", "cli", "obsidian_note", "queue_only"}
 DEFAULT_WINDOW_HOURS = 24
 DEFAULT_SLA_TARGET_SECONDS = 3600
+RUNTIME_SETTING_KEYS = (
+    "obsidianVaultPath",
+    "webhookUrl",
+    "llmMode",
+    "codexBinary",
+    "codexReasoningEffort",
+    "openaiBaseUrl",
+    "anthropicBaseUrl",
+)
+SECRET_SETTING_KEYS = (
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "PROMPTFORGE_OPENAI_COMPAT_API_KEY",
+    "PROMPTFORGE_OLLAMA_API_KEY",
+)
+LOCAL_WEBHOOK_HOSTS = {"localhost", "127.0.0.1", "n8n"}
 
 
 class ProcessingRunListResponse(PaginatedResponse[ProcessingRunRecord]):
@@ -112,6 +143,10 @@ def raise_404(detail: str) -> HTTPException:
 
 def raise_503_db_unavailable() -> HTTPException:
     return HTTPException(status_code=503, detail="database_unconfigured")
+
+
+def raise_503_secrets_unavailable(detail: str = "secrets_encryption_unconfigured") -> HTTPException:
+    return HTTPException(status_code=503, detail=detail)
 
 
 def _db_url() -> str | None:
@@ -169,6 +204,261 @@ def _as_optional_str(value: Any) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _request_role(request: Request | None) -> ConsoleRoleValue:
+    if request is None:
+        return ConsoleRoleValue.ADMIN
+    raw = request.headers.get("x-promptforge-role", "").strip().lower()
+    if not raw:
+        return ConsoleRoleValue.ADMIN
+    try:
+        return ConsoleRoleValue(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="invalid_console_role") from exc
+
+
+def _request_actor(request: Request | None) -> str:
+    if request is None:
+        return "system:console"
+    actor = request.headers.get("x-promptforge-actor", "").strip()
+    return actor or f"role:{_request_role(request).value}"
+
+
+def _settings_permissions(role: ConsoleRoleValue) -> ConsoleSettingsPermissions:
+    is_admin = role == ConsoleRoleValue.ADMIN
+    return ConsoleSettingsPermissions(
+        can_update_runtime=is_admin,
+        can_rotate_secrets=is_admin,
+        can_purge_archived_notes=is_admin,
+    )
+
+
+def _require_admin(request: Request | None) -> tuple[ConsoleRoleValue, str]:
+    role = _request_role(request)
+    actor = _request_actor(request)
+    if role != ConsoleRoleValue.ADMIN:
+        raise HTTPException(status_code=403, detail="forbidden")
+    return role, actor
+
+
+def _normalize_scope(scope: Scope, project_id: str | None) -> tuple[str, str | None]:
+    if scope == Scope.PROJECT and not project_id:
+        raise raise_400("project_id_required")
+    if scope == Scope.GLOBAL and project_id:
+        raise raise_400("project_id_not_allowed")
+    return scope.value, project_id
+
+
+def _string_hash(value: Any) -> str:
+    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _default_runtime_settings() -> dict[str, Any]:
+    watcher = WatcherConfig()
+    llm = LLMSettings.from_env()
+    return {
+        "obsidianVaultPath": watcher.vault_path,
+        "webhookUrl": watcher.webhook_url,
+        "llmMode": llm.mode,
+        "codexBinary": llm.codex_binary,
+        "codexReasoningEffort": llm.codex_reasoning_effort,
+        "openaiBaseUrl": llm.openai_base_url or "https://api.openai.com/v1",
+        "anthropicBaseUrl": llm.anthropic_base_url or "https://api.anthropic.com",
+    }
+
+
+def _default_secret_metadata() -> dict[str, dict[str, Any]]:
+    llm = LLMSettings.from_env()
+    env_values = {
+        "OPENAI_API_KEY": llm.openai_api_key,
+        "ANTHROPIC_API_KEY": llm.anthropic_api_key,
+        "PROMPTFORGE_OPENAI_COMPAT_API_KEY": llm.openai_compat_api_key,
+        "PROMPTFORGE_OLLAMA_API_KEY": llm.ollama_api_key,
+    }
+    return {
+        key: {"configured": bool(env_values.get(key)), "last_rotated_at": None}
+        for key in SECRET_SETTING_KEYS
+    }
+
+
+def _secret_metadata_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    configured = bool(row.get("configured"))
+    has_stored_material = bool(row.get("secret_ciphertext")) or bool(row.get("secret_value"))
+    return {
+        "configured": configured or has_stored_material,
+        "last_rotated_at": _to_iso(row.get("last_rotated_at")) if row.get("last_rotated_at") else None,
+    }
+
+
+def _coerce_non_empty_string(name: str, value: Any, *, maximum: int) -> str:
+    if not isinstance(value, str):
+        raise raise_400(f"invalid_{name}")
+    text = value.strip()
+    if not text or len(text) > maximum:
+        raise raise_400(f"invalid_{name}")
+    return text
+
+
+def _validate_url(name: str, value: Any, *, allow_http: bool = True, allow_local_http: bool = False) -> str:
+    text = _coerce_non_empty_string(name, value, maximum=2048)
+    parsed = urlsplit(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise raise_400(f"invalid_{name}")
+    if not allow_http and parsed.scheme != "https":
+        if not (allow_local_http and parsed.scheme == "http" and parsed.hostname):
+            raise raise_400(f"invalid_{name}")
+        hostname = parsed.hostname.lower()
+        if hostname not in LOCAL_WEBHOOK_HOSTS and "." in hostname:
+            raise raise_400(f"invalid_{name}")
+    return text
+
+
+def _normalize_runtime_update(runtime_patch: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(runtime_patch, dict) or not runtime_patch:
+        raise raise_400("invalid_runtime")
+    unknown = sorted(set(runtime_patch) - set(RUNTIME_SETTING_KEYS))
+    if unknown:
+        raise raise_400(f"unknown_runtime_keys:{','.join(unknown)}")
+    normalized: dict[str, Any] = {}
+    for key, value in runtime_patch.items():
+        if key == "obsidianVaultPath":
+            text = _coerce_non_empty_string(key, value, maximum=1024)
+            if not os.path.isabs(text):
+                raise raise_400(f"invalid_{key}")
+            normalized[key] = text
+        elif key == "webhookUrl":
+            normalized[key] = _validate_url(key, value, allow_http=False, allow_local_http=True)
+        elif key == "llmMode":
+            if value not in {"deterministic_only", "deterministic_plus_review", "llm_inference_optional"}:
+                raise raise_400(f"invalid_{key}")
+            normalized[key] = value
+        elif key == "codexBinary":
+            normalized[key] = _coerce_non_empty_string(key, value, maximum=512)
+        elif key == "codexReasoningEffort":
+            if value not in {"low", "medium", "high"}:
+                raise raise_400(f"invalid_{key}")
+            normalized[key] = value
+        elif key in {"openaiBaseUrl", "anthropicBaseUrl"}:
+            normalized[key] = _validate_url(key, value, allow_http=True)
+    return normalized
+
+
+def _normalize_secret_update(secrets_patch: dict[str, Any]) -> dict[str, str]:
+    if not isinstance(secrets_patch, dict) or not secrets_patch:
+        raise raise_400("invalid_secrets")
+    unknown = sorted(set(secrets_patch) - set(SECRET_SETTING_KEYS))
+    if unknown:
+        raise raise_400(f"unknown_secret_keys:{','.join(unknown)}")
+    normalized: dict[str, str] = {}
+    for key, value in secrets_patch.items():
+        if not isinstance(value, str) or not value.strip():
+            raise raise_400(f"invalid_{key}")
+        normalized[key] = value.strip()
+    return normalized
+
+
+def _validate_project_scope(database_url: str, scope: str, project_id: str | None) -> None:
+    if scope == Scope.PROJECT.value and project_id:
+        _fetch_project_row(database_url, project_id)
+
+
+def _safe_fetch_settings_rows(
+    database_url: str,
+    *,
+    scope: str,
+    project_id: str | None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    try:
+        runtime_rows = _fetch_all(
+            database_url,
+            """
+            SELECT key, value_json, updated_at
+            FROM console_runtime_settings
+            WHERE scope = %s::pf_scope AND project_id IS NOT DISTINCT FROM %s
+            ORDER BY key ASC
+            """,
+            (scope, project_id),
+        )
+        secret_rows = _fetch_all(
+            database_url,
+            """
+            SELECT key, configured, last_rotated_at, updated_at, secret_ciphertext, secret_key_version, secret_value
+            FROM console_secret_settings
+            WHERE scope = %s::pf_scope AND project_id IS NOT DISTINCT FROM %s
+            ORDER BY key ASC
+            """,
+            (scope, project_id),
+        )
+    except psycopg.Error:
+        return [], []
+    return runtime_rows, secret_rows
+
+
+def _build_settings_payload(
+    *,
+    request: Request | None,
+    scope: str = Scope.GLOBAL.value,
+    project_id: str | None = None,
+    database_url: str | None = None,
+) -> ConsoleSettingsResponse:
+    runtime_values = _default_runtime_settings()
+    secret_values = _default_secret_metadata()
+    updated_candidates: list[datetime] = [datetime.now(timezone.utc)]
+
+    if database_url:
+        _validate_project_scope(database_url, scope, project_id)
+        runtime_rows, secret_rows = _safe_fetch_settings_rows(
+            database_url,
+            scope=scope,
+            project_id=project_id,
+        )
+        for row in runtime_rows:
+            key = str(row["key"])
+            if key in runtime_values:
+                runtime_values[key] = row["value_json"]
+                if isinstance(row.get("updated_at"), datetime):
+                    updated_candidates.append(row["updated_at"])
+        for row in secret_rows:
+            key = str(row["key"])
+            if key in secret_values:
+                secret_values[key] = _secret_metadata_from_row(row)
+                if isinstance(row.get("updated_at"), datetime):
+                    updated_candidates.append(row["updated_at"])
+
+    role = _request_role(request)
+    latest_updated = max(updated_candidates).astimezone(timezone.utc).isoformat()
+    return ConsoleSettingsResponse(
+        scope=Scope(scope),
+        project_id=project_id,
+        runtime=ConsoleRuntimeSettings.model_validate(runtime_values),
+        secrets={key: SecretSettingMetadata.model_validate(value) for key, value in secret_values.items()},
+        permissions=_settings_permissions(role),
+        updated_at=latest_updated,
+    )
+
+
+def _audit_log(
+    database_url: str,
+    *,
+    action: str,
+    actor: str,
+    scope: str | None = None,
+    project_id: str | None = None,
+    payload: dict[str, Any],
+) -> None:
+    try:
+        _exec(
+            database_url,
+            """
+            INSERT INTO console_admin_audit_log (action, actor, scope, project_id, payload_json)
+            VALUES (%s, %s, %s::pf_scope, %s, %s::jsonb)
+            """,
+            (action, actor, scope, project_id, json.dumps(payload)),
+        )
+    except psycopg.Error:
+        return
 
 
 def _build_logs(
@@ -237,7 +527,7 @@ def _build_logs(
     return out[:500]
 
 
-def _empty_bootstrap() -> dict[str, Any]:
+def _empty_bootstrap(request: Request | None = None) -> dict[str, Any]:
     return {
         "projects": [],
         "intakeNotes": [],
@@ -254,6 +544,7 @@ def _empty_bootstrap() -> dict[str, Any]:
         "promptTemplates": [],
         "deliveryTargets": [],
         "logs": [],
+        "settings": _build_settings_payload(request=request).model_dump(mode="json"),
         "healthSnapshot": {
             "api": {"status": "degraded", "latency_ms": 0, "checked_at": datetime.now(timezone.utc).isoformat()},
             "providers": [],
@@ -264,11 +555,10 @@ def _empty_bootstrap() -> dict[str, Any]:
     }
 
 
-@router.get("/bootstrap")
-def console_bootstrap() -> dict[str, Any]:
+def _console_bootstrap_payload(request: Request | None = None) -> dict[str, Any]:
     database_url = _db_url()
     if not database_url:
-        return _empty_bootstrap()
+        return _empty_bootstrap(request=request)
 
     projects, _ = cq.fetch_projects(database_url, 500, 0)
     intake_notes, _ = cq.fetch_intake_notes(database_url, limit=1200, offset=0)
@@ -441,6 +731,12 @@ def console_bootstrap() -> dict[str, Any]:
         "promptTemplates": prompt_templates,
         "deliveryTargets": delivery_targets,
         "logs": logs,
+        "settings": _build_settings_payload(
+            request=request,
+            scope=Scope.GLOBAL.value,
+            project_id=None,
+            database_url=database_url,
+        ).model_dump(mode="json"),
         "healthSnapshot": {
             "api": {"status": "ok", "latency_ms": 0, "checked_at": datetime.now(timezone.utc).isoformat()},
             "providers": [
@@ -456,6 +752,247 @@ def console_bootstrap() -> dict[str, Any]:
             "failures_24h": int(failures_24h or 0),
         },
     }
+
+
+def console_bootstrap() -> dict[str, Any]:
+    return _console_bootstrap_payload()
+
+
+@router.get("/bootstrap")
+def console_bootstrap_endpoint(request: Request) -> dict[str, Any]:
+    return _console_bootstrap_payload(request=request)
+
+
+@router.get("/settings", response_model=ConsoleSettingsResponse)
+def get_console_settings(
+    request: Request,
+    scope: str | None = None,
+    project_id: str | None = None,
+) -> ConsoleSettingsResponse:
+    scope_value = _validated_choice("scope", scope, {"global", "project"}) or Scope.GLOBAL.value
+    normalized_scope, normalized_project_id = _normalize_scope(Scope(scope_value), project_id)
+    return _build_settings_payload(
+        request=request,
+        scope=normalized_scope,
+        project_id=normalized_project_id,
+        database_url=_db_url(),
+    )
+
+
+@router.patch("/settings/runtime", response_model=ConsoleSettingsResponse)
+def patch_console_runtime_settings(
+    payload: ConsoleRuntimePatchRequest,
+    request: Request,
+) -> ConsoleSettingsResponse:
+    _, actor = _require_admin(request)
+    database_url = _require_db_url()
+    scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
+    _validate_project_scope(database_url, scope_value, project_value)
+    normalized = _normalize_runtime_update(payload.runtime)
+
+    previous_rows = _safe_fetch_settings_rows(
+        database_url,
+        scope=scope_value,
+        project_id=project_value,
+    )[0]
+    previous_map = {str(row["key"]): row["value_json"] for row in previous_rows}
+
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                for key, value in normalized.items():
+                    cur.execute(
+                        """
+                        UPDATE console_runtime_settings
+                        SET value_json = %s::jsonb,
+                            updated_by_user_id = %s,
+                            updated_at = now()
+                        WHERE scope = %s::pf_scope
+                          AND project_id IS NOT DISTINCT FROM %s
+                          AND key = %s
+                        """,
+                        (json.dumps(value), actor, scope_value, project_value, key),
+                    )
+                    if cur.rowcount == 0:
+                        cur.execute(
+                            """
+                            INSERT INTO console_runtime_settings (
+                                scope, project_id, key, value_json, updated_by_user_id
+                            ) VALUES (%s::pf_scope, %s, %s, %s::jsonb, %s)
+                            """,
+                            (scope_value, project_value, key, json.dumps(value), actor),
+                        )
+            conn.commit()
+    except psycopg.OperationalError as exc:
+        raise raise_503_db_unavailable() from exc
+
+    _audit_log(
+        database_url,
+        action="runtime_settings_updated",
+        actor=actor,
+        scope=scope_value,
+        project_id=project_value,
+        payload={
+            "scope": scope_value,
+            "project_id": project_value,
+            "keys_changed": sorted(normalized),
+            "changes": {
+                key: {
+                    "previous_hash": _string_hash(previous_map.get(key)),
+                    "result_hash": _string_hash(value),
+                }
+                for key, value in normalized.items()
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    return _build_settings_payload(
+        request=request,
+        scope=scope_value,
+        project_id=project_value,
+        database_url=database_url,
+    )
+
+
+@router.patch("/settings/secrets", response_model=ConsoleSettingsResponse)
+def patch_console_secret_settings(
+    payload: ConsoleSecretsPatchRequest,
+    request: Request,
+) -> ConsoleSettingsResponse:
+    _, actor = _require_admin(request)
+    database_url = _require_db_url()
+    scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
+    _validate_project_scope(database_url, scope_value, project_value)
+    normalized = _normalize_secret_update(payload.secrets)
+    try:
+        encrypted = {key: encrypt_secret(value) for key, value in normalized.items()}
+    except SecretsEncryptionError as exc:
+        raise raise_503_secrets_unavailable(str(exc)) from exc
+
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                for key, encrypted_secret in encrypted.items():
+                    cur.execute(
+                        """
+                        UPDATE console_secret_settings
+                        SET secret_value = NULL,
+                            secret_ciphertext = %s,
+                            secret_key_version = %s,
+                            configured = TRUE,
+                            last_rotated_at = now(),
+                            updated_by_user_id = %s,
+                            updated_at = now()
+                        WHERE scope = %s::pf_scope
+                          AND project_id IS NOT DISTINCT FROM %s
+                          AND key = %s
+                        """,
+                        (
+                            encrypted_secret.ciphertext,
+                            encrypted_secret.key_version,
+                            actor,
+                            scope_value,
+                            project_value,
+                            key,
+                        ),
+                    )
+                    if cur.rowcount == 0:
+                        cur.execute(
+                            """
+                            INSERT INTO console_secret_settings (
+                                scope, project_id, key, secret_value, secret_ciphertext, secret_key_version,
+                                configured, last_rotated_at, updated_by_user_id
+                            ) VALUES (%s::pf_scope, %s, %s, NULL, %s, %s, TRUE, now(), %s)
+                            """,
+                            (
+                                scope_value,
+                                project_value,
+                                key,
+                                encrypted_secret.ciphertext,
+                                encrypted_secret.key_version,
+                                actor,
+                            ),
+                        )
+            conn.commit()
+    except psycopg.OperationalError as exc:
+        raise raise_503_db_unavailable() from exc
+
+    _audit_log(
+        database_url,
+        action="secret_settings_rotated",
+        actor=actor,
+        scope=scope_value,
+        project_id=project_value,
+        payload={
+            "scope": scope_value,
+            "project_id": project_value,
+            "secret_keys_changed": sorted(normalized),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    return _build_settings_payload(
+        request=request,
+        scope=scope_value,
+        project_id=project_value,
+        database_url=database_url,
+    )
+
+
+@router.post("/admin/purge-archived-notes", response_model=PurgeArchivedNotesResponse)
+def purge_archived_notes(
+    payload: PurgeArchivedNotesRequest,
+    request: Request,
+) -> PurgeArchivedNotesResponse:
+    _, actor = _require_admin(request)
+    if payload.confirm.strip().lower() != "purge archived notes":
+        raise raise_400("confirmation_required")
+    database_url = _require_db_url()
+
+    counts_query = """
+        WITH archived_notes AS (
+            SELECT id FROM intake_notes WHERE status = 'archived'
+        ),
+        archived_utterances AS (
+            SELECT u.id FROM utterances u JOIN archived_notes n ON n.id = u.intake_note_id
+        ),
+        archived_prompts AS (
+            SELECT pg.id
+            FROM prompt_generations pg
+            JOIN archived_utterances u ON u.id = pg.utterance_id
+        )
+        SELECT
+            (SELECT COUNT(*)::int FROM archived_notes) AS intake_notes,
+            (SELECT COUNT(*)::int FROM archived_utterances) AS utterances,
+            (SELECT COUNT(*)::int FROM transcript_revisions tr JOIN archived_utterances u ON u.id = tr.utterance_id) AS transcript_revisions,
+            (SELECT COUNT(*)::int FROM archived_prompts) AS prompt_generations,
+            (SELECT COUNT(*)::int FROM deliveries d JOIN archived_prompts p ON p.id = d.prompt_generation_id) AS deliveries,
+            (SELECT COUNT(*)::int FROM llm_runs l JOIN archived_prompts p ON p.id = l.prompt_generation_id) AS llm_runs,
+            (SELECT COUNT(*)::int FROM processing_runs pr JOIN archived_utterances u ON u.id = pr.utterance_id) AS processing_runs
+    """
+    rows = _fetch_all(database_url, counts_query)
+    deleted_counts = {
+        key: int(value or 0)
+        for key, value in (rows[0] if rows else {}).items()
+    }
+    _exec(
+        database_url,
+        "DELETE FROM intake_notes WHERE status = 'archived'",
+    )
+    requested_at = datetime.now(timezone.utc).isoformat()
+    _audit_log(
+        database_url,
+        action="purge_archived_notes",
+        actor=actor,
+        payload={
+            "confirmation_status": "confirmed",
+            "deleted_counts": deleted_counts,
+            "timestamp": requested_at,
+        },
+    )
+    return PurgeArchivedNotesResponse(
+        deletedCounts=deleted_counts,
+        requestedAt=requested_at,
+    )
 
 
 def _parse_int_param(name: str, value: str | None, default: int, minimum: int) -> int:

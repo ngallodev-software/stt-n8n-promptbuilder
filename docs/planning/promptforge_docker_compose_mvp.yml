@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       TZ: America/Los_Angeles
     ports:
-      - "5432:5432"
+      - "5439:5439"
     volumes:
       - promptforge_postgres_data:/var/lib/postgresql/data
       - ./docs/planning/promptforge_postgres_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
@@ -33,7 +33,7 @@ services:
     environment:
       DB_TYPE: postgresdb
       DB_POSTGRESDB_HOST: postgres
-      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_PORT: ${PROMPTFORGE_POSTGRES_CONTAINER_PORT:-5439}
       DB_POSTGRESDB_DATABASE: promptforge
       DB_POSTGRESDB_USER: promptforge
       DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
@@ -70,9 +70,9 @@ services:
     working_dir: /workspace
     command: ["sh", "-c", "pip install -e . && python -m promptforge_watcher"]
     environment:
-      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:5432/promptforge
+      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:${PROMPTFORGE_POSTGRES_CONTAINER_PORT:-5439}/promptforge
       PROMPTFORGE_VAULT_PATH: /vault
-      PROMPTFORGE_N8N_WEBHOOK_URL: http://n8n:5678/webhook/promptforge-intake
+      PROMPTFORGE_N8N_WEBHOOK_URL: ${N8N_PROTOCOL}://n8n:${N8N_PORT}/webhook/promptforge-intake
       PROMPTFORGE_WATCH_FOLDER: Inbox/Voice
       PROMPTFORGE_PROCESSED_FOLDER: Processed/Voice
       PROMPTFORGE_ERROR_FOLDER: Processing/Error
@@ -91,12 +91,12 @@ services:
     working_dir: /workspace
     command: ["sh", "-c", "pip install -e . && python -m promptforge_services"]
     environment:
-      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:5432/promptforge
+      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:${PROMPTFORGE_POSTGRES_CONTAINER_PORT:-5439}/promptforge
       PROMPTFORGE_LLAMA_BASE_URL: http://host.docker.internal:8080
       PROMPTFORGE_DEFAULT_MODEL: ${PROMPTFORGE_DEFAULT_MODEL:-llama3.1-local}
       TZ: America/Los_Angeles
     ports:
-      - "8090:8090"
+      - "${PROMPTFORGE_PORT:-8090}:8090"
     volumes:
       - ./:/workspace
       - ./vault:/vault:rw

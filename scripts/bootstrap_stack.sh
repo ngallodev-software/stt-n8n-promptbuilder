@@ -24,6 +24,12 @@ echo "Waiting for Postgres..."
 echo "Applying Postgres schema if needed..."
 "$ROOT_DIR/scripts/migrate_postgres.sh"
 
+echo "Backfilling legacy plaintext console secrets if present..."
+docker compose exec -T promptforge-api python /app/scripts/migrate_console_secrets.py || {
+  echo "console secret backfill failed" >&2
+  exit 1
+}
+
 echo "Waiting for n8n..."
 deadline=$((SECONDS + ${PROMPTFORGE_N8N_TIMEOUT_SECONDS:-120}))
 until docker compose exec -T n8n wget -qO- http://localhost:5678/healthz >/dev/null 2>&1; do

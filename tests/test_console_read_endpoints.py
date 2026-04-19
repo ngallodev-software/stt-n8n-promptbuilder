@@ -83,8 +83,10 @@ def test_console_bootstrap_without_database_returns_expected_shape(monkeypatch: 
         "promptTemplates",
         "deliveryTargets",
         "logs",
+        "settings",
         "healthSnapshot",
     }
+    assert set(body["settings"]) == {"scope", "project_id", "runtime", "secrets", "permissions", "updated_at"}
     assert set(body["healthSnapshot"]) == {"api", "providers", "db", "queue_depth", "failures_24h"}
 
 
@@ -108,12 +110,14 @@ def test_console_bootstrap_with_database_keeps_original_shape(seeded_console_dat
         "promptTemplates",
         "deliveryTargets",
         "logs",
+        "settings",
         "healthSnapshot",
     }
     assert body["projects"]
     assert body["intakeNotes"]
     assert body["deliveries"]
     assert body["processingRuns"]
+    assert body["settings"]["runtime"]["obsidianVaultPath"]
     assert set(body["healthSnapshot"]) == {"api", "providers", "db", "queue_depth", "failures_24h"}
 
 

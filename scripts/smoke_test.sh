@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://localhost:8090}"
-CONSOLE_URL="${CONSOLE_URL:-http://localhost:5173}"
+API_PORT="${PROMPTFORGE_PORT:-8090}"
+CONSOLE_PORT="${PROMPTFORGE_CONSOLE_PORT:-5174}"
+
+BASE_URL="${BASE_URL:-http://localhost:${API_PORT}}"
+CONSOLE_URL="${CONSOLE_URL:-http://localhost:${CONSOLE_PORT}}"
 
 pass_count=0
 fail_count=0

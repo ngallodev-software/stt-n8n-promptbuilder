@@ -81,11 +81,16 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _send_json(self, code: int, body: dict) -> None:
         payload = json.dumps(body).encode()
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Health checks and short-lived clients can disconnect before the
+            # response is fully written. Treat that as a normal shutdown path.
+            return
 
     def do_GET(self) -> None:
         if self.path in ("/healthz", "/health"):
