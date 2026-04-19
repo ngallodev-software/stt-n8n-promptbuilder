@@ -4,6 +4,13 @@ PromptForge is a local-first voice-to-prompt compiler and router.
 
 It converts structured Obsidian intake notes into deterministic prompt artifacts, delivery records, and optional downstream automation events.
 
+## Related Repositories
+
+- Backend/platform (this repo): `https://github.com/ngallodev-software/stt-n8n-promptbuilder`
+- Frontend console: `https://github.com/ngallodev-software/prompt-forge-console`
+
+See [API_COMPAT.md](API_COMPAT.md) for cross-repo API and contract expectations.
+
 ## What It Does Today
 
 - Parses Obsidian intake notes from `Inbox/Voice/`.
