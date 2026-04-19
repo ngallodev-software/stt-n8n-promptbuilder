@@ -1,0 +1,116 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/bootstrap"
+    },
+    {
+      "method": "GET",
+      "path": "/deliveries"
+    },
+    {
+      "method": "GET",
+      "path": "/dictionary"
+    },
+    {
+      "method": "GET",
+      "path": "/intake"
+    },
+    {
+      "method": "GET",
+      "path": "/intake/{id}"
+    },
+    {
+      "method": "GET",
+      "path": "/lineage/{intakeNoteId}"
+    },
+    {
+      "method": "GET",
+      "path": "/logs"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics/error-fingerprints"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics/queue-depth"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics/sla"
+    },
+    {
+      "method": "GET",
+      "path": "/metrics/throughput"
+    },
+    {
+      "method": "GET",
+      "path": "/processing/failed"
+    },
+    {
+      "method": "GET",
+      "path": "/projects"
+    },
+    {
+      "method": "GET",
+      "path": "/prompts"
+    },
+    {
+      "method": "GET",
+      "path": "/rules"
+    },
+    {
+      "method": "GET",
+      "path": "/rulesets"
+    },
+    {
+      "method": "GET",
+      "path": "/targets"
+    },
+    {
+      "method": "GET",
+      "path": "/templates"
+    },
+    {
+      "method": "PATCH",
+      "path": "/deliveries/{delivery_id}/status"
+    },
+    {
+      "method": "PATCH",
+      "path": "/intake/{intake_note_id}/archive"
+    },
+    {
+      "method": "PATCH",
+      "path": "/prompts/{prompt_generation_id}/priority"
+    },
+    {
+      "method": "PATCH",
+      "path": "/rules/{rule_id}"
+    },
+    {
+      "method": "POST",
+      "path": "/deliveries/{delivery_id}/reroute"
+    },
+    {
+      "method": "POST",
+      "path": "/deliveries/{delivery_id}/retry"
+    },
+    {
+      "method": "POST",
+      "path": "/dictionary/upsert"
+    },
+    {
+      "method": "POST",
+      "path": "/prompts/{prompt_generation_id}/clone"
+    },
+    {
+      "method": "POST",
+      "path": "/prompts/{prompt_generation_id}/force-review"
+    },
+    {
+      "method": "POST",
+      "path": "/templates/{template_id}/activate"
+    }
+  ]
+}
