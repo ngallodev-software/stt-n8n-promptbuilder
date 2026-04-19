@@ -75,6 +75,12 @@ services:
       PROMPTFORGE_ERROR_FOLDER: ${PROMPTFORGE_ERROR_FOLDER:-Processing/Error}
       PROMPTFORGE_WEBHOOK_ENABLED: ${PROMPTFORGE_WEBHOOK_ENABLED:-false}
       PROMPTFORGE_N8N_WEBHOOK_URL: ${N8N_PROTOCOL}://n8n:${N8N_PORT}/webhook/promptforge-intake
+      PROMPTFORGE_LLM_ENABLED: ${PROMPTFORGE_LLM_ENABLED:-false}
+      PROMPTFORGE_LLM_MODE: ${PROMPTFORGE_LLM_MODE:-deterministic_only}
+      PROMPTFORGE_LLM_REVIEW_PROVIDER: ${PROMPTFORGE_LLM_REVIEW_PROVIDER:-openai_compatible}
+      PROMPTFORGE_LLM_INFERENCE_PROVIDER: ${PROMPTFORGE_LLM_INFERENCE_PROVIDER:-openai_compatible}
+      PROMPTFORGE_OPENAI_COMPAT_BASE_URL: ${PROMPTFORGE_OPENAI_COMPAT_BASE_URL:-http://host.docker.internal:8765/v1}
+      PROMPTFORGE_OPENAI_COMPAT_MODEL: ${PROMPTFORGE_OPENAI_COMPAT_MODEL:-codex}
       TZ: ${TZ:-America/Los_Angeles}
     ports:
       - "127.0.0.1:${PROMPTFORGE_PORT:-8090}:8090"
@@ -113,6 +119,12 @@ services:
       PROMPTFORGE_N8N_WEBHOOK_URL: http://n8n:5678/webhook/promptforge-intake
       PROMPTFORGE_WEBHOOK_ENABLED: ${PROMPTFORGE_WEBHOOK_ENABLED:-true}
       PROMPTFORGE_STABILIZATION_SECONDS: ${PROMPTFORGE_STABILIZATION_SECONDS:-0.5}
+      PROMPTFORGE_LLM_ENABLED: ${PROMPTFORGE_LLM_ENABLED:-false}
+      PROMPTFORGE_LLM_MODE: ${PROMPTFORGE_LLM_MODE:-deterministic_only}
+      PROMPTFORGE_LLM_REVIEW_PROVIDER: ${PROMPTFORGE_LLM_REVIEW_PROVIDER:-openai_compatible}
+      PROMPTFORGE_LLM_INFERENCE_PROVIDER: ${PROMPTFORGE_LLM_INFERENCE_PROVIDER:-openai_compatible}
+      PROMPTFORGE_OPENAI_COMPAT_BASE_URL: ${PROMPTFORGE_OPENAI_COMPAT_BASE_URL:-http://host.docker.internal:8765/v1}
+      PROMPTFORGE_OPENAI_COMPAT_MODEL: ${PROMPTFORGE_OPENAI_COMPAT_MODEL:-codex}
       TZ: ${TZ:-America/Los_Angeles}
     volumes:
       - type: bind
@@ -144,7 +156,7 @@ services:
     ports:
       - "127.0.0.1:${PROMPTFORGE_CONSOLE_PORT:-5174}:80"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
