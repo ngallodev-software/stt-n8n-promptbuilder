@@ -123,6 +123,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     entrypoint: ["/usr/local/bin/watcher_entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /proc/1/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   promptforge-console:
     build:
