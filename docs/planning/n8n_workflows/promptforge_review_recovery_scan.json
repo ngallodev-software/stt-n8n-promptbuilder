@@ -1,0 +1,104 @@
+{
+  "name": "PromptForge Review Recovery Scan",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "Periodic review triage scan. Queries PromptForge state for review-required prompt generations, failed deliveries, and errored intake notes, then emits a compact summary payload suitable for a future Obsidian or notification adapter."
+      },
+      "id": "c3ab9f89-c910-4dc0-80bb-62732d0db772",
+      "name": "Workflow Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -900,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "4efafed1-74b0-4542-940a-ef9d33b61f02",
+      "name": "Every Ten Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -860,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT 'prompt_generation_review' AS review_kind,\n       pg.id AS record_id,\n       i.note_relative_path,\n       COALESCE(p.slug, 'inbox') AS project_slug,\n       pg.status,\n       d.status AS delivery_status,\n       NULL::text AS error_text\nFROM prompt_generations pg\nLEFT JOIN utterances u ON u.id = pg.utterance_id\nLEFT JOIN intake_notes i ON i.id = u.intake_note_id\nLEFT JOIN projects p ON p.id = pg.project_id\nLEFT JOIN deliveries d ON d.prompt_generation_id = pg.id\nWHERE pg.requires_review = TRUE\nUNION ALL\nSELECT 'delivery_failed' AS review_kind,\n       d.id AS record_id,\n       i.note_relative_path,\n       COALESCE(p.slug, 'inbox') AS project_slug,\n       pg.status,\n       d.status AS delivery_status,\n       d.error_text\nFROM deliveries d\nJOIN prompt_generations pg ON pg.id = d.prompt_generation_id\nLEFT JOIN utterances u ON u.id = pg.utterance_id\nLEFT JOIN intake_notes i ON i.id = u.intake_note_id\nLEFT JOIN projects p ON p.id = pg.project_id\nWHERE d.status = 'failed'\nUNION ALL\nSELECT 'intake_error' AS review_kind,\n       i.id AS record_id,\n       i.note_relative_path,\n       COALESCE(p.slug, 'inbox') AS project_slug,\n       i.status,\n       NULL::text AS delivery_status,\n       NULL::text AS error_text\nFROM intake_notes i\nLEFT JOIN projects p ON p.id = i.project_id\nWHERE i.status = 'error'\nORDER BY review_kind, note_relative_path;"
+      },
+      "id": "15f892a8-826d-43ca-b45f-a1826fcdd004",
+      "name": "Fetch Review Candidates",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -600,
+        20
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "PromptForge Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map((item) => item.json);\nconst byKind = rows.reduce((acc, row) => {\n  acc[row.review_kind] = (acc[row.review_kind] || 0) + 1;\n  return acc;\n}, {});\nreturn [{\n  json: {\n    ok: true,\n    workflow: 'promptforge-review-recovery-scan',\n    generated_at: new Date().toISOString(),\n    total_candidates: rows.length,\n    counts_by_kind: byKind,\n    candidates: rows.slice(0, 25),\n  },\n}];"
+      },
+      "id": "f27d7b06-03b1-4ce0-9a4d-58be8e51dc40",
+      "name": "Build Review Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        20
+      ]
+    }
+  ],
+  "connections": {
+    "Every Ten Minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Review Candidates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Review Candidates": {
+      "main": [
+        [
+          {
+            "node": "Build Review Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {},
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "versionId": "3f1340c6-01bf-4dd1-bd13-8999459f6cb0",
+  "triggerCount": 1,
+  "tags": []
+}

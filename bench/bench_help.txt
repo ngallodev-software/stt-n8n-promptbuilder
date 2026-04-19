@@ -1,0 +1,37 @@
+usage: bench_ollama_promptforge.py [-h] [--base-url BASE_URL] [--model MODEL]
+                                   [--fixtures FIXTURES] [--warmups WARMUPS]
+                                   [--runs RUNS] [--num-ctx NUM_CTX]
+                                   [--max-tokens MAX_TOKENS]
+                                   [--timeout-seconds TIMEOUT_SECONDS]
+                                   [--output-format {summary,json}] [--stream]
+                                   [--chunk-size CHUNK_SIZE]
+                                   [--chunk-overlap CHUNK_OVERLAP]
+                                   [--limit LIMIT]
+
+Benchmark a local Ollama chat endpoint with PromptForge-style prompts.
+
+options:
+  -h, --help            show this help message and exit
+  --base-url BASE_URL   Ollama base URL, such as http://localhost:11434.
+  --model MODEL         Model name passed to Ollama.
+  --fixtures FIXTURES   JSONL benchmark fixture file.
+  --warmups WARMUPS     Warmup runs per case before collecting samples.
+  --runs RUNS           Sample runs per case after warmups.
+  --num-ctx NUM_CTX     Ollama context window passed through to
+                        options.num_ctx.
+  --max-tokens MAX_TOKENS
+                        Maximum output tokens passed through to
+                        options.num_predict.
+  --timeout-seconds TIMEOUT_SECONDS
+                        Per-request timeout.
+  --output-format {summary,json}
+                        Human-readable summary or machine-readable JSON
+                        output.
+  --stream              Use Ollama stream=true and assemble newline-delimited
+                        JSON chunks.
+  --chunk-size CHUNK_SIZE
+                        Split the user prompt into fixed-size character chunks
+                        before synthesis.
+  --chunk-overlap CHUNK_OVERLAP
+                        Character overlap between adjacent prompt chunks.
+  --limit LIMIT         Only run the first N benchmark cases.

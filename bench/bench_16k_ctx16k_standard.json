@@ -1,0 +1,156 @@
+{
+  "aggregate": {
+    "aggregate_rates": {
+      "end_to_end_tokens_per_s": 15.54309204399513,
+      "generation_tokens_per_s": 40.71824161870348,
+      "prompt_tokens_per_s": 238.92378193595508
+    },
+    "content_json_valid_count": 0,
+    "contract_valid_count": 0,
+    "end_to_end_tokens_per_s": {
+      "max": 15.54309204399513,
+      "mean": 15.54309204399513,
+      "min": 15.54309204399513,
+      "p50": 15.54309204399513,
+      "p95": 15.54309204399513
+    },
+    "generation_tokens_per_s": {
+      "max": 40.71824161870348,
+      "mean": 40.71824161870348,
+      "min": 40.71824161870348,
+      "p50": 40.71824161870348,
+      "p95": 40.71824161870348
+    },
+    "latency_ms": {
+      "max": 27040.0,
+      "mean": 27040.0,
+      "min": 27040.0,
+      "p50": 27040.0,
+      "p95": 27040.0
+    },
+    "prompt_tokens_per_s": {
+      "max": 238.92378193595508,
+      "mean": 238.92378193595508,
+      "min": 238.92378193595508,
+      "p50": 238.92378193595508,
+      "p95": 238.92378193595508
+    },
+    "response_json_valid_count": 1,
+    "sample_count": 1,
+    "success_count": 1,
+    "totals": {
+      "generation_duration_ns": 2947082075,
+      "generation_tokens": 120,
+      "prompt_duration_ns": 1251445116,
+      "prompt_tokens": 299,
+      "total_duration_ns": 26957313179
+    }
+  },
+  "base_url": "http://192.168.88.12:11434",
+  "benchmark": "ollama_promptforge",
+  "case_count": 1,
+  "cases": [
+    {
+      "case_id": "retry_state_patch_plan",
+      "content_json_valid_count": 0,
+      "contract_valid_count": 0,
+      "expected_field_count": 8,
+      "expected_fields": [
+        "contract_name",
+        "destination",
+        "intent",
+        "mode",
+        "project_slug",
+        "prompt_type",
+        "requires_review",
+        "target_identifier"
+      ],
+      "field_match_count": 0,
+      "field_match_total": 8,
+      "metrics": {
+        "aggregate_rates": {
+          "end_to_end_tokens_per_s": 15.54309204399513,
+          "generation_tokens_per_s": 40.71824161870348,
+          "prompt_tokens_per_s": 238.92378193595508
+        },
+        "content_json_valid_count": 0,
+        "contract_valid_count": 0,
+        "end_to_end_tokens_per_s": {
+          "max": 15.54309204399513,
+          "mean": 15.54309204399513,
+          "min": 15.54309204399513,
+          "p50": 15.54309204399513,
+          "p95": 15.54309204399513
+        },
+        "generation_tokens_per_s": {
+          "max": 40.71824161870348,
+          "mean": 40.71824161870348,
+          "min": 40.71824161870348,
+          "p50": 40.71824161870348,
+          "p95": 40.71824161870348
+        },
+        "latency_ms": {
+          "max": 27040.0,
+          "mean": 27040.0,
+          "min": 27040.0,
+          "p50": 27040.0,
+          "p95": 27040.0
+        },
+        "prompt_tokens_per_s": {
+          "max": 238.92378193595508,
+          "mean": 238.92378193595508,
+          "min": 238.92378193595508,
+          "p50": 238.92378193595508,
+          "p95": 238.92378193595508
+        },
+        "response_json_valid_count": 1,
+        "sample_count": 1,
+        "success_count": 1,
+        "totals": {
+          "generation_duration_ns": 2947082075,
+          "generation_tokens": 120,
+          "prompt_duration_ns": 1251445116,
+          "prompt_tokens": 299,
+          "total_duration_ns": 26957313179
+        }
+      },
+      "notes": "Seed case adapted from the local eval harness.",
+      "response_json_valid_count": 1,
+      "sample_count": 1,
+      "samples": [
+        {
+          "case_id": "retry_state_patch_plan",
+          "content_json_valid": false,
+          "contract_error": null,
+          "contract_quality": null,
+          "contract_valid": false,
+          "end_to_end_tokens_per_s": 15.54309204399513,
+          "eval_count": 120,
+          "eval_duration_ns": 2947082075,
+          "field_matches": {},
+          "generation_tokens_per_s": 40.71824161870348,
+          "http_status": 200,
+          "ok": true,
+          "parse_error": "json_object_not_found",
+          "prompt_eval_count": 299,
+          "prompt_eval_duration_ns": 1251445116,
+          "prompt_tokens_per_s": 238.92378193595508,
+          "request_ms": 27040,
+          "response_error": null,
+          "response_json_valid": true,
+          "run_index": 1,
+          "total_duration_ns": 26957313179,
+          "warmup": false
+        }
+      ],
+      "success_count": 1,
+      "warmup_count": 0
+    }
+  ],
+  "max_tokens": 120,
+  "model": "phi-3.5-mini-16k:latest",
+  "num_ctx": 16384,
+  "runs": 1,
+  "sample_count": 1,
+  "warmups": 0
+}

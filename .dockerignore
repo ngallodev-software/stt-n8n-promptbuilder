@@ -1,0 +1,16 @@
+.git
+.gitignore
+.pytest_cache
+.venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.DS_Store
+vault/
+docs/
+tests/
+HANDOFF.md
+improvements_to_plan.md
+.codebase-memory/

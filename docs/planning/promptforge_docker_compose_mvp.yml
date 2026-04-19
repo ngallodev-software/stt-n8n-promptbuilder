@@ -1,0 +1,106 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: promptforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: promptforge
+      POSTGRES_USER: promptforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      TZ: America/Los_Angeles
+    ports:
+      - "5432:5432"
+    volumes:
+      - promptforge_postgres_data:/var/lib/postgresql/data
+      - ./docs/planning/promptforge_postgres_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./docs/planning/promptforge_seed_data.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptforge -d promptforge"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: promptforge-n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: promptforge
+      DB_POSTGRESDB_USER: promptforge
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      GENERIC_TIMEZONE: America/Los_Angeles
+      TZ: America/Los_Angeles
+      EXECUTIONS_MODE: regular
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_SECURE_COOKIE: "false"
+    ports:
+      - "5678:5678"
+    volumes:
+      - promptforge_n8n_data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  promptforge-watcher:
+    image: python:3.12-slim
+    container_name: promptforge-watcher
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    working_dir: /workspace
+    command: ["sh", "-c", "pip install -e . && python -m promptforge_watcher"]
+    environment:
+      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:5432/promptforge
+      PROMPTFORGE_VAULT_PATH: /vault
+      PROMPTFORGE_N8N_WEBHOOK_URL: http://n8n:5678/webhook/promptforge-intake
+      PROMPTFORGE_WATCH_FOLDER: Inbox/Voice
+      PROMPTFORGE_PROCESSED_FOLDER: Processed/Voice
+      PROMPTFORGE_ERROR_FOLDER: Processing/Error
+      TZ: America/Los_Angeles
+    volumes:
+      - ./:/workspace
+      - ./vault:/vault:rw
+
+  promptforge-services:
+    image: python:3.12-slim
+    container_name: promptforge-services
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /workspace
+    command: ["sh", "-c", "pip install -e . && python -m promptforge_services"]
+    environment:
+      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:5432/promptforge
+      PROMPTFORGE_LLAMA_BASE_URL: http://host.docker.internal:8080
+      PROMPTFORGE_DEFAULT_MODEL: ${PROMPTFORGE_DEFAULT_MODEL:-llama3.1-local}
+      TZ: America/Los_Angeles
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./:/workspace
+      - ./vault:/vault:rw
+
+volumes:
+  promptforge_postgres_data:
+  promptforge_n8n_data:

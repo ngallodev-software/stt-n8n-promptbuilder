@@ -1,0 +1,32 @@
+services:
+  promptforge-api:
+    volumes:
+      - ./:/app
+    environment:
+      PYTHONPATH: /app
+    command:
+      [
+        "uvicorn",
+        "promptforge_services.api:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8090",
+        "--reload",
+        "--no-access-log",
+        "--reload-dir",
+        "/app/promptforge_services",
+        "--reload-dir",
+        "/app/tests",
+      ]
+
+  promptforge-watcher:
+    volumes:
+      - ./:/app
+      - type: bind
+        source: ./vault
+        target: /vault
+        bind:
+          create_host_path: true
+    environment:
+      PYTHONPATH: /app

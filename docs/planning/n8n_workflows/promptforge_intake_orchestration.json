@@ -1,0 +1,369 @@
+{
+  "name": "PromptForge Intake Orchestration",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "Watcher-triggered intake entrypoint. Validates the webhook payload produced by `promptforge_watcher.webhook.build_webhook_payload`, classifies the event, and returns an orchestration summary without re-implementing Python parsing or rendering."
+      },
+      "id": "2f31fa5b-2be0-40f5-b791-f0226471c2a3",
+      "name": "Workflow Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1220,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "promptforge-intake",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0a20f2ef-bfa4-42d1-8841-fcbdb3c67b0d",
+      "name": "Watcher Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1160,
+        20
+      ],
+      "webhookId": "promptforge-intake"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $json.body ?? $json;\nconst required = [\n  'intake_note_id',\n  'utterance_id',\n  'prompt_generation_id',\n  'delivery_id',\n  'contract_name',\n  'project_slug',\n  'prompt_type',\n  'destination',\n  'target_type',\n  'target_identifier',\n  'mode',\n  'priority',\n  'delivery_status',\n  'requires_review',\n  'template_name',\n  'final_prompt_markdown',\n];\nconst missing = required.filter((key) => payload[key] === undefined || payload[key] === null);\nif (missing.length) {\n  throw new Error(`promptforge_intake_payload_missing:${missing.join(',')}`);\n}\nconst orchestrationRoute = payload.requires_review\n  ? 'review'\n  : payload.mode === 'auto_dispatch'\n    ? 'dispatch'\n    : payload.mode === 'draft'\n      ? 'draft'\n      : 'queue';\nreturn [{\n  json: {\n    ...payload,\n    orchestration_route: orchestrationRoute,\n    event_source: 'promptforge-watcher',\n    received_at: new Date().toISOString(),\n    prompt_preview: String(payload.final_prompt_markdown).slice(0, 240),\n  },\n}];"
+      },
+      "id": "e7b5ac67-8374-4519-93de-dbc282ddb220",
+      "name": "Normalize Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -900,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.orchestration_route }}",
+                    "rightValue": "review",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "review"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.orchestration_route }}",
+                    "rightValue": "dispatch",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "dispatch"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.orchestration_route }}",
+                    "rightValue": "queue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "queue"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.orchestration_route }}",
+                    "rightValue": "draft",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "draft"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "34746c8d-a86f-411d-a8b9-44e161987523",
+      "name": "Route Intake Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -620,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "workflow_action",
+              "value": "queue_for_review"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "07b98b7d-1607-4130-851d-f6f665bb1a28",
+      "name": "Review Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -360,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "workflow_action",
+              "value": "handoff_to_dispatch"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "661d5fd2-6364-4204-9f43-30d7d9476837",
+      "name": "Dispatch Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -360,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "workflow_action",
+              "value": "queued"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "0cf823be-497b-4d7d-a412-2b933a79c6ab",
+      "name": "Queue Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -360,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "workflow_action",
+              "value": "retained_as_draft"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ffde3246-2c67-4664-b6cf-bd91ab0d0f63",
+      "name": "Draft Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -360,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, workflow: 'promptforge-intake-orchestration', action: $json.workflow_action, intake_note_id: $json.intake_note_id, prompt_generation_id: $json.prompt_generation_id, delivery_id: $json.delivery_id, route: $json.orchestration_route, received_at: $json.received_at } }}",
+        "options": {}
+      },
+      "id": "4dbd1c2c-b0cf-46af-a175-f14ff8b58f52",
+      "name": "Respond Intake Ack",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        -60,
+        20
+      ]
+    }
+  ],
+  "connections": {
+    "Watcher Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Payload": {
+      "main": [
+        [
+          {
+            "node": "Route Intake Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Intake Event": {
+      "main": [
+        [
+          {
+            "node": "Review Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Dispatch Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Queue Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Draft Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Review Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond Intake Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond Intake Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond Intake Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Draft Summary": {
+      "main": [
+        [
+          {
+            "node": "Respond Intake Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {},
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "versionId": "0fcb51d2-5790-4248-b05d-67c9b1c53af7",
+  "triggerCount": 1,
+  "tags": []
+}

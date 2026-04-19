@@ -1,0 +1,444 @@
+{
+  "aggregate": {
+    "aggregate_rates": {
+      "end_to_end_tokens_per_s": 47.52312588640916,
+      "generation_tokens_per_s": 30.93225252001214,
+      "prompt_tokens_per_s": 104.32271049376733
+    },
+    "content_json_valid_count": 0,
+    "contract_valid_count": 0,
+    "end_to_end_tokens_per_s": {
+      "max": 47.52312588640916,
+      "mean": 47.52312588640916,
+      "min": 47.52312588640916,
+      "p50": 47.52312588640916,
+      "p95": 47.52312588640916
+    },
+    "generation_tokens_per_s": {
+      "max": 30.93225252001214,
+      "mean": 30.93225252001214,
+      "min": 30.93225252001214,
+      "p50": 30.93225252001214,
+      "p95": 30.93225252001214
+    },
+    "latency_ms": {
+      "max": 8862.0,
+      "mean": 8862.0,
+      "min": 8862.0,
+      "p50": 8862.0,
+      "p95": 8862.0
+    },
+    "prompt_tokens_per_s": {
+      "max": 104.32271049376733,
+      "mean": 104.32271049376733,
+      "min": 104.32271049376733,
+      "p50": 104.32271049376733,
+      "p95": 104.32271049376733
+    },
+    "response_json_valid_count": 1,
+    "sample_count": 4,
+    "success_count": 1,
+    "totals": {
+      "generation_duration_ns": 3879445893,
+      "generation_tokens": 120,
+      "prompt_duration_ns": 2866106513,
+      "prompt_tokens": 299,
+      "total_duration_ns": 8816760097
+    }
+  },
+  "base_url": "http://192.168.88.12:11434",
+  "benchmark": "ollama_promptforge",
+  "case_count": 4,
+  "cases": [
+    {
+      "case_id": "retry_state_patch_plan",
+      "content_json_valid_count": 0,
+      "contract_valid_count": 0,
+      "expected_field_count": 8,
+      "expected_fields": [
+        "contract_name",
+        "destination",
+        "intent",
+        "mode",
+        "project_slug",
+        "prompt_type",
+        "requires_review",
+        "target_identifier"
+      ],
+      "field_match_count": 0,
+      "field_match_total": 8,
+      "metrics": {
+        "aggregate_rates": {
+          "end_to_end_tokens_per_s": 47.52312588640916,
+          "generation_tokens_per_s": 30.93225252001214,
+          "prompt_tokens_per_s": 104.32271049376733
+        },
+        "content_json_valid_count": 0,
+        "contract_valid_count": 0,
+        "end_to_end_tokens_per_s": {
+          "max": 47.52312588640916,
+          "mean": 47.52312588640916,
+          "min": 47.52312588640916,
+          "p50": 47.52312588640916,
+          "p95": 47.52312588640916
+        },
+        "generation_tokens_per_s": {
+          "max": 30.93225252001214,
+          "mean": 30.93225252001214,
+          "min": 30.93225252001214,
+          "p50": 30.93225252001214,
+          "p95": 30.93225252001214
+        },
+        "latency_ms": {
+          "max": 8862.0,
+          "mean": 8862.0,
+          "min": 8862.0,
+          "p50": 8862.0,
+          "p95": 8862.0
+        },
+        "prompt_tokens_per_s": {
+          "max": 104.32271049376733,
+          "mean": 104.32271049376733,
+          "min": 104.32271049376733,
+          "p50": 104.32271049376733,
+          "p95": 104.32271049376733
+        },
+        "response_json_valid_count": 1,
+        "sample_count": 1,
+        "success_count": 1,
+        "totals": {
+          "generation_duration_ns": 3879445893,
+          "generation_tokens": 120,
+          "prompt_duration_ns": 2866106513,
+          "prompt_tokens": 299,
+          "total_duration_ns": 8816760097
+        }
+      },
+      "notes": "Seed case adapted from the local eval harness.",
+      "response_json_valid_count": 1,
+      "sample_count": 1,
+      "samples": [
+        {
+          "case_id": "retry_state_patch_plan",
+          "content_json_valid": false,
+          "contract_error": null,
+          "contract_quality": null,
+          "contract_valid": false,
+          "end_to_end_tokens_per_s": 47.52312588640916,
+          "eval_count": 120,
+          "eval_duration_ns": 3879445893,
+          "field_matches": {},
+          "generation_tokens_per_s": 30.93225252001214,
+          "http_status": 200,
+          "ok": true,
+          "parse_error": "json_object_not_found",
+          "prompt_eval_count": 299,
+          "prompt_eval_duration_ns": 2866106513,
+          "prompt_tokens_per_s": 104.32271049376733,
+          "request_ms": 8862,
+          "response_error": null,
+          "response_json_valid": true,
+          "run_index": 1,
+          "total_duration_ns": 8816760097,
+          "warmup": false
+        }
+      ],
+      "success_count": 1,
+      "warmup_count": 0
+    },
+    {
+      "case_id": "missing_cli_target_routes_review",
+      "content_json_valid_count": 0,
+      "contract_valid_count": 0,
+      "expected_field_count": 8,
+      "expected_fields": [
+        "contract_name",
+        "destination",
+        "intent",
+        "mode",
+        "project_slug",
+        "prompt_type",
+        "requires_review",
+        "target_identifier"
+      ],
+      "field_match_count": 0,
+      "field_match_total": 8,
+      "metrics": {
+        "aggregate_rates": {
+          "end_to_end_tokens_per_s": null,
+          "generation_tokens_per_s": null,
+          "prompt_tokens_per_s": null
+        },
+        "content_json_valid_count": 0,
+        "contract_valid_count": 0,
+        "end_to_end_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "generation_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "latency_ms": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "prompt_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "response_json_valid_count": 0,
+        "sample_count": 1,
+        "success_count": 0,
+        "totals": {
+          "generation_duration_ns": 0,
+          "generation_tokens": 0,
+          "prompt_duration_ns": 0,
+          "prompt_tokens": 0,
+          "total_duration_ns": 0
+        }
+      },
+      "notes": "Ambiguous CLI target should fall back to queue-only review routing.",
+      "response_json_valid_count": 0,
+      "sample_count": 1,
+      "samples": [
+        {
+          "case_id": "missing_cli_target_routes_review",
+          "content_json_valid": false,
+          "contract_error": null,
+          "contract_quality": null,
+          "contract_valid": false,
+          "end_to_end_tokens_per_s": null,
+          "eval_count": null,
+          "eval_duration_ns": null,
+          "field_matches": {},
+          "generation_tokens_per_s": null,
+          "http_status": null,
+          "ok": false,
+          "parse_error": "request_failed",
+          "prompt_eval_count": null,
+          "prompt_eval_duration_ns": null,
+          "prompt_tokens_per_s": null,
+          "request_ms": 60115,
+          "response_error": "ReadTimeout",
+          "response_json_valid": false,
+          "run_index": 1,
+          "total_duration_ns": null,
+          "warmup": false
+        }
+      ],
+      "success_count": 0,
+      "warmup_count": 0
+    },
+    {
+      "case_id": "context_edge_retry_state_patch_plan",
+      "content_json_valid_count": 0,
+      "contract_valid_count": 0,
+      "expected_field_count": 8,
+      "expected_fields": [
+        "contract_name",
+        "destination",
+        "intent",
+        "mode",
+        "project_slug",
+        "prompt_type",
+        "requires_review",
+        "target_identifier"
+      ],
+      "field_match_count": 0,
+      "field_match_total": 8,
+      "metrics": {
+        "aggregate_rates": {
+          "end_to_end_tokens_per_s": null,
+          "generation_tokens_per_s": null,
+          "prompt_tokens_per_s": null
+        },
+        "content_json_valid_count": 0,
+        "contract_valid_count": 0,
+        "end_to_end_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "generation_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "latency_ms": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "prompt_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "response_json_valid_count": 0,
+        "sample_count": 1,
+        "success_count": 0,
+        "totals": {
+          "generation_duration_ns": 0,
+          "generation_tokens": 0,
+          "prompt_duration_ns": 0,
+          "prompt_tokens": 0,
+          "total_duration_ns": 0
+        }
+      },
+      "notes": "Near-context-window stress case that inflates the prompt with deterministic filler.",
+      "response_json_valid_count": 0,
+      "sample_count": 1,
+      "samples": [
+        {
+          "case_id": "context_edge_retry_state_patch_plan",
+          "content_json_valid": false,
+          "contract_error": null,
+          "contract_quality": null,
+          "contract_valid": false,
+          "end_to_end_tokens_per_s": null,
+          "eval_count": null,
+          "eval_duration_ns": null,
+          "field_matches": {},
+          "generation_tokens_per_s": null,
+          "http_status": null,
+          "ok": false,
+          "parse_error": "request_failed",
+          "prompt_eval_count": null,
+          "prompt_eval_duration_ns": null,
+          "prompt_tokens_per_s": null,
+          "request_ms": 60119,
+          "response_error": "ReadTimeout",
+          "response_json_valid": false,
+          "run_index": 1,
+          "total_duration_ns": null,
+          "warmup": false
+        }
+      ],
+      "success_count": 0,
+      "warmup_count": 0
+    },
+    {
+      "case_id": "context_edge_obsidian_summary",
+      "content_json_valid_count": 0,
+      "contract_valid_count": 0,
+      "expected_field_count": 8,
+      "expected_fields": [
+        "contract_name",
+        "destination",
+        "intent",
+        "mode",
+        "project_slug",
+        "prompt_type",
+        "requires_review",
+        "target_identifier"
+      ],
+      "field_match_count": 0,
+      "field_match_total": 8,
+      "metrics": {
+        "aggregate_rates": {
+          "end_to_end_tokens_per_s": null,
+          "generation_tokens_per_s": null,
+          "prompt_tokens_per_s": null
+        },
+        "content_json_valid_count": 0,
+        "contract_valid_count": 0,
+        "end_to_end_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "generation_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "latency_ms": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "prompt_tokens_per_s": {
+          "max": null,
+          "mean": null,
+          "min": null,
+          "p50": null,
+          "p95": null
+        },
+        "response_json_valid_count": 0,
+        "sample_count": 1,
+        "success_count": 0,
+        "totals": {
+          "generation_duration_ns": 0,
+          "generation_tokens": 0,
+          "prompt_duration_ns": 0,
+          "prompt_tokens": 0,
+          "total_duration_ns": 0
+        }
+      },
+      "notes": "Heavier stress case that pushes the prompt closer to the configured context budget.",
+      "response_json_valid_count": 0,
+      "sample_count": 1,
+      "samples": [
+        {
+          "case_id": "context_edge_obsidian_summary",
+          "content_json_valid": false,
+          "contract_error": null,
+          "contract_quality": null,
+          "contract_valid": false,
+          "end_to_end_tokens_per_s": null,
+          "eval_count": null,
+          "eval_duration_ns": null,
+          "field_matches": {},
+          "generation_tokens_per_s": null,
+          "http_status": null,
+          "ok": false,
+          "parse_error": "request_failed",
+          "prompt_eval_count": null,
+          "prompt_eval_duration_ns": null,
+          "prompt_tokens_per_s": null,
+          "request_ms": 60119,
+          "response_error": "ReadTimeout",
+          "response_json_valid": false,
+          "run_index": 1,
+          "total_duration_ns": null,
+          "warmup": false
+        }
+      ],
+      "success_count": 0,
+      "warmup_count": 0
+    }
+  ],
+  "max_tokens": 120,
+  "model": "phi-3.5-mini-8k:latest",
+  "num_ctx": 8192,
+  "runs": 1,
+  "sample_count": 4,
+  "warmups": 0
+}

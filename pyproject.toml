@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "promptforge"
+version = "0.1.0"
+description = "Local-first voice-to-prompt compiler and router"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "pydantic>=2.8.0",
+  "python-frontmatter>=1.1.0",
+  "PyYAML>=6.0.1",
+  "rapidfuzz>=3.9.0",
+  "regex>=2024.5.15",
+  "jinja2>=3.1.4",
+  "mdformat>=0.7.18",
+  "psycopg[binary]>=3.2.0",
+  "watchdog>=4.0.1",
+  "httpx>=0.27.0",
+  "orjson>=3.10.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "."}
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["promptforge_watcher*", "promptforge_services*"]

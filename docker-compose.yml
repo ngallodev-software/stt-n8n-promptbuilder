@@ -1,0 +1,129 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: promptforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: promptforge
+      POSTGRES_USER: promptforge
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      TZ: ${TZ:-America/Los_Angeles}
+    ports:
+      - "127.0.0.1:${PROMPTFORGE_POSTGRES_HOST_PORT:-15432}:5432"
+    volumes:
+      - promptforge_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U promptforge -d promptforge"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: promptforge-n8n
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE: promptforge
+      DB_POSTGRESDB_USER: promptforge
+      DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      N8N_EDITOR_BASE_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-change_me_local_dev}
+      GENERIC_TIMEZONE: ${TZ:-America/Los_Angeles}
+      TZ: ${TZ:-America/Los_Angeles}
+      EXECUTIONS_MODE: regular
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      N8N_SECURE_COOKIE: "false"
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - promptforge_n8n_data:/home/node/.n8n
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  promptforge-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: promptforge-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PROMPTFORGE_HOST: 0.0.0.0
+      PROMPTFORGE_PORT: 8090
+      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:5432/promptforge
+      PROMPTFORGE_VAULT_PATH: /vault
+      PROMPTFORGE_WATCH_FOLDER: ${PROMPTFORGE_WATCH_FOLDER:-Inbox/Voice}
+      PROMPTFORGE_PROCESSED_FOLDER: ${PROMPTFORGE_PROCESSED_FOLDER:-Processed/Voice}
+      PROMPTFORGE_ERROR_FOLDER: ${PROMPTFORGE_ERROR_FOLDER:-Processing/Error}
+      PROMPTFORGE_WEBHOOK_ENABLED: ${PROMPTFORGE_WEBHOOK_ENABLED:-false}
+      PROMPTFORGE_N8N_WEBHOOK_URL: http://n8n:5678/webhook/promptforge-intake
+      TZ: ${TZ:-America/Los_Angeles}
+    ports:
+      - "127.0.0.1:8090:8090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/_healthz', timeout=3).read()\"",
+        ]
+      interval: 60s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  promptforge-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.watcher
+    container_name: promptforge-watcher
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      promptforge-api:
+        condition: service_healthy
+      n8n:
+        condition: service_healthy
+    environment:
+      PROMPTFORGE_DATABASE_URL: postgresql://promptforge:${POSTGRES_PASSWORD:-change_me}@postgres:5432/promptforge
+      PROMPTFORGE_VAULT_PATH: /vault
+      PROMPTFORGE_WATCH_FOLDER: ${PROMPTFORGE_WATCH_FOLDER:-Inbox/Voice}
+      PROMPTFORGE_PROCESSED_FOLDER: ${PROMPTFORGE_PROCESSED_FOLDER:-Processed/Voice}
+      PROMPTFORGE_ERROR_FOLDER: ${PROMPTFORGE_ERROR_FOLDER:-Processing/Error}
+      PROMPTFORGE_N8N_WEBHOOK_URL: http://n8n:5678/webhook/promptforge-intake
+      PROMPTFORGE_WEBHOOK_ENABLED: ${PROMPTFORGE_WEBHOOK_ENABLED:-true}
+      PROMPTFORGE_STABILIZATION_SECONDS: ${PROMPTFORGE_STABILIZATION_SECONDS:-0.5}
+      TZ: ${TZ:-America/Los_Angeles}
+    volumes:
+      - type: bind
+        source: ${PROMPTFORGE_VAULT_SOURCE:-/lump/share/media/development}
+        target: /vault
+        bind:
+          create_host_path: true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    entrypoint: ["/usr/local/bin/watcher_entrypoint.sh"]
+
+volumes:
+  promptforge_postgres_data:
+  promptforge_n8n_data:

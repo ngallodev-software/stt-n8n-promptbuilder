@@ -1,0 +1,252 @@
+{
+  "aggregate": {
+    "aggregate_rates": {
+      "end_to_end_tokens_per_s": 169.14829923121118,
+      "generation_tokens_per_s": 94.08397374049963,
+      "prompt_tokens_per_s": 10221.466404520006
+    },
+    "content_json_valid_count": 0,
+    "contract_valid_count": 0,
+    "end_to_end_tokens_per_s": {
+      "max": 173.78286073022838,
+      "mean": 169.15593543322035,
+      "min": 164.5290101362123,
+      "p50": 169.15593543322035,
+      "p95": 173.32016820052758
+    },
+    "generation_tokens_per_s": {
+      "max": 94.34950315587018,
+      "mean": 94.0847189272687,
+      "min": 93.81993469866721,
+      "p50": 94.0847189272687,
+      "p95": 94.32302473301003
+    },
+    "latency_ms": {
+      "max": 2505.0,
+      "mean": 2481.5,
+      "min": 2458.0,
+      "p50": 2481.5,
+      "p95": 2502.65
+    },
+    "prompt_tokens_per_s": {
+      "max": 11281.047329187697,
+      "mean": 10340.787671663547,
+      "min": 9400.5280141394,
+      "p50": 10340.787671663547,
+      "p95": 11187.021363435282
+    },
+    "response_json_valid_count": 2,
+    "sample_count": 2,
+    "success_count": 2,
+    "totals": {
+      "generation_duration_ns": 2550912663,
+      "generation_tokens": 240,
+      "prompt_duration_ns": 56449826,
+      "prompt_tokens": 577,
+      "total_duration_ns": 4830081081
+    }
+  },
+  "base_url": "http://192.168.88.12:11434",
+  "benchmark": "ollama_promptforge",
+  "case_count": 2,
+  "cases": [
+    {
+      "case_id": "retry_state_patch_plan",
+      "content_json_valid_count": 0,
+      "contract_valid_count": 0,
+      "expected_field_count": 8,
+      "expected_fields": [
+        "contract_name",
+        "destination",
+        "intent",
+        "mode",
+        "project_slug",
+        "prompt_type",
+        "requires_review",
+        "target_identifier"
+      ],
+      "field_match_count": 0,
+      "field_match_total": 8,
+      "metrics": {
+        "aggregate_rates": {
+          "end_to_end_tokens_per_s": 173.78286073022838,
+          "generation_tokens_per_s": 93.81993469866721,
+          "prompt_tokens_per_s": 9400.5280141394
+        },
+        "content_json_valid_count": 0,
+        "contract_valid_count": 0,
+        "end_to_end_tokens_per_s": {
+          "max": 173.78286073022838,
+          "mean": 173.78286073022838,
+          "min": 173.78286073022838,
+          "p50": 173.78286073022838,
+          "p95": 173.78286073022838
+        },
+        "generation_tokens_per_s": {
+          "max": 93.81993469866721,
+          "mean": 93.81993469866721,
+          "min": 93.81993469866721,
+          "p50": 93.81993469866721,
+          "p95": 93.81993469866721
+        },
+        "latency_ms": {
+          "max": 2458.0,
+          "mean": 2458.0,
+          "min": 2458.0,
+          "p50": 2458.0,
+          "p95": 2458.0
+        },
+        "prompt_tokens_per_s": {
+          "max": 9400.5280141394,
+          "mean": 9400.5280141394,
+          "min": 9400.5280141394,
+          "p50": 9400.5280141394,
+          "p95": 9400.5280141394
+        },
+        "response_json_valid_count": 1,
+        "sample_count": 1,
+        "success_count": 1,
+        "totals": {
+          "generation_duration_ns": 1279045870,
+          "generation_tokens": 120,
+          "prompt_duration_ns": 31806724,
+          "prompt_tokens": 299,
+          "total_duration_ns": 2411054797
+        }
+      },
+      "notes": "Seed case adapted from the local eval harness.",
+      "response_json_valid_count": 1,
+      "sample_count": 1,
+      "samples": [
+        {
+          "case_id": "retry_state_patch_plan",
+          "content_json_valid": false,
+          "contract_error": null,
+          "contract_quality": null,
+          "contract_valid": false,
+          "end_to_end_tokens_per_s": 173.78286073022838,
+          "eval_count": 120,
+          "eval_duration_ns": 1279045870,
+          "field_matches": {},
+          "generation_tokens_per_s": 93.81993469866721,
+          "http_status": 200,
+          "ok": true,
+          "parse_error": "json_object_not_found",
+          "prompt_eval_count": 299,
+          "prompt_eval_duration_ns": 31806724,
+          "prompt_tokens_per_s": 9400.5280141394,
+          "request_ms": 2458,
+          "response_error": null,
+          "response_json_valid": true,
+          "run_index": 1,
+          "total_duration_ns": 2411054797,
+          "warmup": false
+        }
+      ],
+      "success_count": 1,
+      "warmup_count": 0
+    },
+    {
+      "case_id": "missing_cli_target_routes_review",
+      "content_json_valid_count": 0,
+      "contract_valid_count": 0,
+      "expected_field_count": 8,
+      "expected_fields": [
+        "contract_name",
+        "destination",
+        "intent",
+        "mode",
+        "project_slug",
+        "prompt_type",
+        "requires_review",
+        "target_identifier"
+      ],
+      "field_match_count": 0,
+      "field_match_total": 8,
+      "metrics": {
+        "aggregate_rates": {
+          "end_to_end_tokens_per_s": 164.5290101362123,
+          "generation_tokens_per_s": 94.34950315587018,
+          "prompt_tokens_per_s": 11281.047329187697
+        },
+        "content_json_valid_count": 0,
+        "contract_valid_count": 0,
+        "end_to_end_tokens_per_s": {
+          "max": 164.5290101362123,
+          "mean": 164.5290101362123,
+          "min": 164.5290101362123,
+          "p50": 164.5290101362123,
+          "p95": 164.5290101362123
+        },
+        "generation_tokens_per_s": {
+          "max": 94.34950315587018,
+          "mean": 94.34950315587018,
+          "min": 94.34950315587018,
+          "p50": 94.34950315587018,
+          "p95": 94.34950315587018
+        },
+        "latency_ms": {
+          "max": 2505.0,
+          "mean": 2505.0,
+          "min": 2505.0,
+          "p50": 2505.0,
+          "p95": 2505.0
+        },
+        "prompt_tokens_per_s": {
+          "max": 11281.047329187697,
+          "mean": 11281.047329187697,
+          "min": 11281.047329187697,
+          "p50": 11281.047329187697,
+          "p95": 11281.047329187697
+        },
+        "response_json_valid_count": 1,
+        "sample_count": 1,
+        "success_count": 1,
+        "totals": {
+          "generation_duration_ns": 1271866793,
+          "generation_tokens": 120,
+          "prompt_duration_ns": 24643102,
+          "prompt_tokens": 278,
+          "total_duration_ns": 2419026284
+        }
+      },
+      "notes": "Ambiguous CLI target should fall back to queue-only review routing.",
+      "response_json_valid_count": 1,
+      "sample_count": 1,
+      "samples": [
+        {
+          "case_id": "missing_cli_target_routes_review",
+          "content_json_valid": false,
+          "contract_error": null,
+          "contract_quality": null,
+          "contract_valid": false,
+          "end_to_end_tokens_per_s": 164.5290101362123,
+          "eval_count": 120,
+          "eval_duration_ns": 1271866793,
+          "field_matches": {},
+          "generation_tokens_per_s": 94.34950315587018,
+          "http_status": 200,
+          "ok": true,
+          "parse_error": "json_object_not_found",
+          "prompt_eval_count": 278,
+          "prompt_eval_duration_ns": 24643102,
+          "prompt_tokens_per_s": 11281.047329187697,
+          "request_ms": 2505,
+          "response_error": null,
+          "response_json_valid": true,
+          "run_index": 1,
+          "total_duration_ns": 2419026284,
+          "warmup": false
+        }
+      ],
+      "success_count": 1,
+      "warmup_count": 0
+    }
+  ],
+  "max_tokens": 120,
+  "model": "phi-3.5-mini-16k:latest",
+  "num_ctx": 4096,
+  "runs": 1,
+  "sample_count": 2,
+  "warmups": 0
+}

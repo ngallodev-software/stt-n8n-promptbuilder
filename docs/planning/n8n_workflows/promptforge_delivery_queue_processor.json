@@ -1,0 +1,516 @@
+{
+  "name": "PromptForge Delivery Queue Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "Scheduled queue dispatcher. It fetches the next queued delivery from Postgres, marks it as dispatching, classifies the target adapter, and returns a compact dispatch envelope. Adapter-specific execution remains intentionally conservative until non-Obsidian adapters are implemented in Python."
+      },
+      "id": "0b743296-fecd-485d-bfd9-799b9e31d3ca",
+      "name": "Workflow Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1120,
+        -240
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "fd8bf8a1-c5c5-408c-ba0d-6df72db4d8a3",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1080,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT d.id AS delivery_id,\n       d.prompt_generation_id,\n       d.destination,\n       d.target_type,\n       d.target_identifier,\n       d.mode,\n       d.priority,\n       d.status,\n       pg.final_prompt_markdown,\n       pg.requires_review\nFROM deliveries d\nJOIN prompt_generations pg ON pg.id = d.prompt_generation_id\nWHERE d.status = 'queued'\nORDER BY CASE d.priority\n    WHEN 'urgent' THEN 1\n    WHEN 'high' THEN 2\n    WHEN 'normal' THEN 3\n    ELSE 4\nEND,\nqueued_at ASC\nLIMIT 1;"
+      },
+      "id": "4484f4e0-e263-44ba-a4e2-bf8ee2672872",
+      "name": "Fetch Next Queued Delivery",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -820,
+        20
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "PromptForge Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.delivery_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0a07f76b-c203-402f-9a60-96813e9a659c",
+      "name": "Queued Delivery Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -560,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, workflow: 'promptforge-delivery-queue-processor', action: 'idle', message: 'No queued deliveries available.' } }}",
+        "options": {}
+      },
+      "id": "8572167d-7dc2-4c8f-8856-4ab5ce423f9d",
+      "name": "No Work Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -300,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE deliveries\nSET status = 'dispatching'\nWHERE id = '{{ $json.delivery_id }}';"
+      },
+      "id": "cc6ce47e-dd35-4f2c-9d9f-c580df1f7ba4",
+      "name": "Mark Dispatching",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        -300,
+        -40
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_ME",
+          "name": "PromptForge Postgres"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target_type }}",
+                    "rightValue": "generic_queue",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "generic_queue"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target_type }}",
+                    "rightValue": "claude_session",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "claude_session"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target_type }}",
+                    "rightValue": "codex_session",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "codex_session"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.target_type }}",
+                    "rightValue": "chat_session",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "chat_session"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": 4
+        }
+      },
+      "id": "27c23710-a334-4d10-927a-9671d393bb1c",
+      "name": "Resolve Adapter Path",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -40,
+        -40
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "dispatch_result",
+              "value": "manual_review_queue"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "321d05eb-bcdf-4cdd-9f3d-e36d5dbc4214",
+      "name": "Generic Queue Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "dispatch_result",
+              "value": "claude_adapter_pending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "1f20c7db-4b75-4c11-a79b-e8c973ff22d9",
+      "name": "Claude Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "dispatch_result",
+              "value": "codex_adapter_pending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "03ca05f9-2b58-4397-b7ef-7f73fc9c4951",
+      "name": "Codex Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "dispatch_result",
+              "value": "chat_adapter_pending"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "da9abfb4-7947-4721-aab7-1f8430a4dde9",
+      "name": "Chat Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "keepOnlySet": false,
+        "values": {
+          "string": [
+            {
+              "name": "dispatch_result",
+              "value": "unsupported_target_type"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "4e34f579-5bc4-4b54-983a-bd61c8b02bf9",
+      "name": "Fallback Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ok: true, workflow: 'promptforge-delivery-queue-processor', delivery_id: $json.delivery_id, target_type: $json.target_type, target_identifier: $json.target_identifier, dispatch_result: $json.dispatch_result, prompt_generation_id: $json.prompt_generation_id } }];"
+      },
+      "id": "3272daa9-e8b8-4544-97f7-4487e4d1c1fe",
+      "name": "Build Dispatch Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        -40
+      ]
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Fetch Next Queued Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Next Queued Delivery": {
+      "main": [
+        [
+          {
+            "node": "Queued Delivery Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queued Delivery Found?": {
+      "main": [
+        [
+          {
+            "node": "Mark Dispatching",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Work Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Dispatching": {
+      "main": [
+        [
+          {
+            "node": "Resolve Adapter Path",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Adapter Path": {
+      "main": [
+        [
+          {
+            "node": "Generic Queue Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Codex Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Chat Summary",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fallback Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generic Queue Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Dispatch Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Dispatch Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Codex Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Dispatch Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Dispatch Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fallback Summary": {
+      "main": [
+        [
+          {
+            "node": "Build Dispatch Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {},
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "versionId": "8b5e26d8-0a49-4fc1-bd5f-cd8243b48d99",
+  "triggerCount": 1,
+  "tags": []
+}
