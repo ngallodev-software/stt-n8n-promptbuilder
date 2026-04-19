@@ -3,11 +3,11 @@ from __future__ import annotations
 import hashlib
 import os
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, TypeVar
 
 import psycopg
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import Field, ValidationError
 from psycopg.rows import dict_row
 
 from promptforge_services import console_queries as cq
@@ -18,9 +18,11 @@ from promptforge_services.console_models import (
     DeliveryDetailResponse,
     DeliveryListResponse,
     DeliveryRecord,
+    DeliveryStatusRequest,
     DeliveryTargetDetailResponse,
     DeliveryTargetListResponse,
     DeliveryTargetRecord,
+    DictionaryUpsertRequest,
     ErrorFingerprintListResponse,
     ErrorFingerprintRecord,
     IntakeNoteDetailResponse,
@@ -32,6 +34,7 @@ from promptforge_services.console_models import (
     PaginatedResponse,
     PaginationMeta,
     ProcessingRunRecord,
+    PromptPriorityRequest,
     ProjectDetailResponse,
     ProjectListResponse,
     ProjectRecord,
@@ -44,11 +47,14 @@ from promptforge_services.console_models import (
     QueueDepthResponse,
     RuleDetailResponse,
     RuleListResponse,
+    RulePatchRequest,
     RuleRecord,
     RuleSetRecord,
     RulesetDetailResponse,
     RulesetListResponse,
     SlaSummaryResponse,
+    TemplateActivateRequest,
+    StrictBaseModel,
     ThroughputSummaryResponse,
     TranscriptRevisionRecord,
     UtteranceRecord,
@@ -75,34 +81,23 @@ class ProcessingRunListResponse(PaginatedResponse[ProcessingRunRecord]):
     processing_runs: list[ProcessingRunRecord] = Field(alias="processingRuns")
 
 
-class DeliveryRerouteRequest(BaseModel):
+RequestModelT = TypeVar("RequestModelT", bound=StrictBaseModel)
+
+
+class DeliveryRerouteRequest(StrictBaseModel):
     targetId: str
 
 
-class DeliveryStatusRequest(BaseModel):
-    status: str
+def raise_400(detail: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=detail)
 
 
-class RulePatchRequest(BaseModel):
-    enabled: bool | None = None
-    priority: int | None = None
+def raise_404(detail: str) -> HTTPException:
+    return HTTPException(status_code=404, detail=detail)
 
 
-class DictionaryUpsertRequest(BaseModel):
-    id: str | None = None
-    scope: str | None = None
-    project_id: str | None = None
-    source_term: str | None = None
-    normalized_term: str | None = None
-    description: str | None = None
-
-
-class TemplateActivateRequest(BaseModel):
-    family: str
-
-
-class PromptPriorityRequest(BaseModel):
-    priority: str
+def raise_503_db_unavailable() -> HTTPException:
+    return HTTPException(status_code=503, detail="database_unconfigured")
 
 
 def _db_url() -> str | None:
@@ -112,24 +107,37 @@ def _db_url() -> str | None:
 def _require_db_url() -> str:
     database_url = _db_url()
     if not database_url:
-        raise HTTPException(status_code=503, detail="database_unconfigured")
+        raise raise_503_db_unavailable()
     return database_url
 
 
+def _validate_request(model_cls: type[RequestModelT], payload: Any) -> RequestModelT:
+    try:
+        return model_cls.model_validate(payload)
+    except ValidationError as exc:
+        raise raise_400("invalid_request") from exc
+
+
 def _fetch_all(database_url: str, sql: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-    with psycopg.connect(database_url, row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            rows = cur.fetchall()
+    try:
+        with psycopg.connect(database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+    except psycopg.OperationalError as exc:
+        raise raise_503_db_unavailable() from exc
     return [dict(row) for row in rows]
 
 
 def _exec(database_url: str, sql: str, params: tuple[Any, ...] = ()) -> int:
-    with psycopg.connect(database_url) as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql, params)
-            count = cur.rowcount
-        conn.commit()
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                count = cur.rowcount
+            conn.commit()
+    except psycopg.OperationalError as exc:
+        raise raise_503_db_unavailable() from exc
     return count
 
 
@@ -432,9 +440,9 @@ def _parse_int_param(name: str, value: str | None, default: int, minimum: int) -
     try:
         parsed = int(value)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail=f"invalid_{name}")
+        raise raise_400(f"invalid_{name}")
     if parsed < minimum:
-        raise HTTPException(status_code=400, detail=f"invalid_{name}")
+        raise raise_400(f"invalid_{name}")
     return parsed
 
 
@@ -449,7 +457,7 @@ def _validated_choice(name: str, value: str | None, allowed: set[str]) -> str | 
     if value is None or value == "":
         return None
     if value not in allowed:
-        raise HTTPException(status_code=400, detail=f"invalid_{name}")
+        raise raise_400(f"invalid_{name}")
     return value
 
 
@@ -665,7 +673,7 @@ def _fetch_project_row(database_url: str, project_id: str) -> dict[str, Any]:
         (project_id,),
     )
     if not rows:
-        raise HTTPException(status_code=404, detail="project_not_found")
+        raise raise_404("project_not_found")
     return rows[0]
 
 
@@ -673,9 +681,9 @@ def _fetch_log_sources(
     database_url: str,
     intake_note_id: str | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    intake_notes, deliveries, processing_runs = _fetch_log_sources(database_url, intake_note_id)
+    intake_notes, deliveries, processing_runs = cq.fetch_log_sources(database_url, intake_note_id=intake_note_id)
     if intake_note_id and not intake_notes:
-        raise HTTPException(status_code=404, detail="intake_note_not_found")
+        raise raise_404("intake_note_not_found")
     return intake_notes, deliveries, processing_runs
 
 
@@ -749,7 +757,7 @@ def get_intake_note(id: str) -> IntakeNoteDetailResponse:
     database_url = _require_db_url()
     row = cq.fetch_intake_note(database_url, id)
     if not row:
-        raise HTTPException(status_code=404, detail="intake_note_not_found")
+        raise raise_404("intake_note_not_found")
     return IntakeNoteDetailResponse(note=_intake_note_record(row))
 
 
@@ -758,7 +766,7 @@ def get_intake_lineage(intakeNoteId: str) -> NoteLineageResponse:
     database_url = _require_db_url()
     note_row = cq.fetch_intake_note(database_url, intakeNoteId)
     if not note_row:
-        raise HTTPException(status_code=404, detail="intake_note_not_found")
+        raise raise_404("intake_note_not_found")
     utterance_rows = cq.fetch_utterances_for_note(database_url, intakeNoteId)
     utterance_ids = [row["id"] for row in utterance_rows]
     revision_rows = cq.fetch_transcript_revisions(database_url, intake_note_id=intakeNoteId, limit=100000, ascending=True)
@@ -1026,7 +1034,7 @@ def project_throughput(
     if project_id is not None and project_id != "":
         project_row = cq.fetch_project_by_id(database_url, project_id)
         if not project_row:
-            raise HTTPException(status_code=404, detail="project_not_found")
+            raise raise_404("project_not_found")
         project_slug = project_row["slug"]
     row, window_start, window_end = cq.fetch_throughput_summary(
         database_url,
@@ -1060,7 +1068,7 @@ def sla_summary(
     if project_id is not None and project_id != "":
         project_row = cq.fetch_project_by_id(database_url, project_id)
         if not project_row:
-            raise HTTPException(status_code=404, detail="project_not_found")
+            raise raise_404("project_not_found")
         project_slug = project_row["slug"]
     row, window_start, window_end = cq.fetch_sla_summary(
         database_url,
@@ -1178,7 +1186,7 @@ def retry_delivery(delivery_id: str) -> dict[str, Any]:
         (delivery_id,),
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="delivery_not_found")
+        raise raise_404("delivery_not_found")
     return {"ok": True, "message": "Retry queued"}
 
 
@@ -1196,7 +1204,7 @@ def reroute_delivery(delivery_id: str, payload: DeliveryRerouteRequest) -> dict[
         (payload.targetId,),
     )
     if not target_rows:
-        raise HTTPException(status_code=404, detail="target_not_found")
+        raise raise_404("target_not_found")
     target = target_rows[0]
     updated = _exec(
         database_url,
@@ -1210,7 +1218,7 @@ def reroute_delivery(delivery_id: str, payload: DeliveryRerouteRequest) -> dict[
         (target["id"], target["target_type"], target["target_identifier"], delivery_id),
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="delivery_not_found")
+        raise raise_404("delivery_not_found")
     return {"ok": True}
 
 
@@ -1224,10 +1232,10 @@ def patch_delivery_status(delivery_id: str, payload: DeliveryStatusRequest) -> d
         SET status = %s::pf_delivery_status
         WHERE id = %s
         """,
-        (payload.status, delivery_id),
+        (payload.status.value, delivery_id),
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="delivery_not_found")
+        raise raise_404("delivery_not_found")
     return {"ok": True}
 
 
@@ -1240,7 +1248,7 @@ def patch_rule(rule_id: str, payload: RulePatchRequest) -> dict[str, Any]:
         (rule_id,),
     )
     if not row:
-        raise HTTPException(status_code=404, detail="rule_not_found")
+        raise raise_404("rule_not_found")
     current = row[0]
     enabled = payload.enabled if payload.enabled is not None else current["enabled"]
     priority = payload.priority if payload.priority is not None else current["priority"]
@@ -1260,11 +1268,11 @@ def patch_rule(rule_id: str, payload: RulePatchRequest) -> dict[str, Any]:
 @router.post("/dictionary/upsert")
 def upsert_dictionary(payload: DictionaryUpsertRequest) -> dict[str, Any]:
     database_url = _require_db_url()
-    scope = payload.scope or "global"
+    scope = payload.scope.value if payload.scope is not None else "global"
     source_term = payload.source_term or ""
     normalized_term = payload.normalized_term or payload.source_term or ""
     if not source_term.strip():
-        raise HTTPException(status_code=400, detail="source_term_required")
+        raise raise_400("source_term_required")
     if payload.id:
         _exec(
             database_url,
@@ -1279,7 +1287,7 @@ def upsert_dictionary(payload: DictionaryUpsertRequest) -> dict[str, Any]:
             """,
             (scope, payload.project_id, source_term, normalized_term, payload.description, payload.id),
         )
-        return {"ok": True, "payload": payload.model_dump()}
+        return {"ok": True, "payload": payload.model_dump(mode="json")}
     inserted = _fetch_all(
         database_url,
         """
@@ -1291,7 +1299,7 @@ def upsert_dictionary(payload: DictionaryUpsertRequest) -> dict[str, Any]:
         """,
         (scope, payload.project_id, source_term, normalized_term, payload.description),
     )
-    out = payload.model_dump()
+    out = payload.model_dump(mode="json")
     out["id"] = inserted[0]["id"] if inserted else None
     return {"ok": True, "payload": out}
 
@@ -1314,7 +1322,7 @@ def activate_template(template_id: str, payload: TemplateActivateRequest) -> dic
         (template_id,),
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="template_not_found")
+        raise raise_404("template_not_found")
     return {"ok": True}
 
 
@@ -1327,7 +1335,7 @@ def force_prompt_review(prompt_generation_id: str) -> dict[str, Any]:
         (prompt_generation_id,),
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="prompt_generation_not_found")
+        raise raise_404("prompt_generation_not_found")
     return {"ok": True}
 
 
@@ -1351,7 +1359,7 @@ def clone_prompt(prompt_generation_id: str) -> dict[str, Any]:
         (prompt_generation_id,),
     )
     if not rows:
-        raise HTTPException(status_code=404, detail="prompt_generation_not_found")
+        raise raise_404("prompt_generation_not_found")
     return {"ok": True, "newId": rows[0]["id"]}
 
 
@@ -1371,10 +1379,10 @@ def patch_prompt_priority(prompt_generation_id: str, payload: PromptPriorityRequ
             LIMIT 1
         )
         """,
-        (payload.priority, prompt_generation_id),
+        (payload.priority.value, prompt_generation_id),
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="delivery_for_prompt_not_found")
+        raise raise_404("delivery_for_prompt_not_found")
     return {"ok": True}
 
 
@@ -1392,5 +1400,5 @@ def archive_intake_note(intake_note_id: str) -> dict[str, Any]:
         (intake_note_id,),
     )
     if updated == 0:
-        raise HTTPException(status_code=404, detail="intake_note_not_found")
+        raise raise_404("intake_note_not_found")
     return {"ok": True}

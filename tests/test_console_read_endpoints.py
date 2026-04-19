@@ -9,6 +9,7 @@ from promptforge_services.console_api import (
     get_intake_lineage,
     get_intake_note,
     list_deliveries,
+    list_delivery_targets,
     list_dictionary_terms,
     list_failed_processing_runs,
     list_intake_notes,
@@ -16,7 +17,6 @@ from promptforge_services.console_api import (
     list_projects,
     list_prompt_templates,
     list_prompts,
-    list_delivery_targets,
     list_rules,
     list_rulesets,
     project_throughput,
@@ -48,13 +48,6 @@ SUCCESS_NOTE_ID = "aaaaaaaa-0000-4000-8000-000000000001"
 FAILURE_NOTE_ID = "aaaaaaaa-0000-4000-8000-000000000002"
 QUEUE_NOTE_ID = "aaaaaaaa-0000-4000-8000-000000000003"
 PROJECT_ID = "22222222-2222-4222-8222-222222222222"
-
-
-@pytest.fixture()
-def seeded_console_database_url: str:
-    # The session fixture in conftest seeds the dedicated test schema and keeps
-    # PROMPTFORGE_DATABASE_URL pointed at it for the duration of the session.
-    return ""
 
 
 def _as_dict(value: object) -> dict[str, object]:
@@ -145,7 +138,12 @@ def test_console_bootstrap_with_database_keeps_original_shape(seeded_console_dat
         (error_fingerprints, {"level": "verbose"}),
     ],
 )
-def test_console_read_endpoints_reject_invalid_params(func, kwargs) -> None:
+def test_console_read_endpoints_reject_invalid_params(
+    seeded_console_database_url: str,
+    func,
+    kwargs,
+) -> None:
+    del seeded_console_database_url
     with pytest.raises(HTTPException) as exc_info:
         func(**kwargs)
     assert exc_info.value.status_code == 400

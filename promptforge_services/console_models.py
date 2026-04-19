@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from promptforge_services.models import Destination, DeliveryStatus, Mode, PromptType, TargetType
+from promptforge_services.models import Destination, DeliveryStatus as DeliveryStatusValue, Mode, PromptType, TargetType
 
-Scope = Literal["global", "user", "project"]
+RecordScope = Literal["global", "user", "project"]
 NoteStatus = Literal["new", "imported", "processing", "processed", "error", "archived"]
 RevisionKind = Literal[
     "raw",
@@ -32,8 +33,90 @@ RuleType = Literal["cleanup", "expansion", "routing", "formatting", "safety", "t
 LogLevel = Literal["debug", "info", "warn", "error"]
 
 
+class Scope(str, Enum):
+    GLOBAL = "global"
+    PROJECT = "project"
+
+
+class RulesetScope(str, Enum):
+    GLOBAL = "global"
+    PROJECT = "project"
+
+
+class DeliveryStatus(str, Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Priority(str, Enum):
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
 class StrictBaseModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
+EnumT = TypeVar("EnumT", bound=Enum)
+
+
+def _coerce_enum(enum_cls: type[EnumT], value: Any) -> EnumT:
+    if isinstance(value, enum_cls):
+        return value
+    if isinstance(value, str):
+        try:
+            return enum_cls(value)
+        except ValueError as exc:
+            raise ValueError(f"invalid {enum_cls.__name__}") from exc
+    raise ValueError(f"invalid {enum_cls.__name__}")
+
+
+class DeliveryStatusRequest(StrictBaseModel):
+    status: DeliveryStatus
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _validate_status(cls, value: Any) -> DeliveryStatus:
+        return _coerce_enum(DeliveryStatus, value)
+
+
+class RulePatchRequest(StrictBaseModel):
+    enabled: bool | None = None
+    priority: int | None = None
+
+
+class DictionaryUpsertRequest(StrictBaseModel):
+    id: str | None = None
+    scope: Scope | None = None
+    project_id: str | None = None
+    source_term: str | None = None
+    normalized_term: str | None = None
+    description: str | None = None
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def _validate_scope(cls, value: Any) -> Scope | None:
+        if value is None:
+            return None
+        return _coerce_enum(Scope, value)
+
+
+class TemplateActivateRequest(StrictBaseModel):
+    family: str
+
+
+class PromptPriorityRequest(StrictBaseModel):
+    priority: Priority
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def _validate_priority(cls, value: Any) -> Priority:
+        return _coerce_enum(Priority, value)
 
 
 class PaginationMeta(StrictBaseModel):
@@ -96,7 +179,7 @@ class UtteranceRecord(StrictBaseModel):
     raw_text: str
     directive_text: str | None = None
     project_id: str | None = None
-    scope: Scope
+    scope: RecordScope
     capture_type: CaptureType
     created_at: str
 
@@ -136,7 +219,7 @@ class DeliveryRecord(StrictBaseModel):
     id: str
     prompt_generation_id: str
     target_id: str | None = None
-    status: DeliveryStatus
+    status: DeliveryStatusValue
     destination: Destination
     mode: Mode
     priority: PriorityLevel
@@ -186,7 +269,7 @@ class DeliveryDetailResponse(StrictBaseModel):
 class RuleSetRecord(StrictBaseModel):
     id: str
     name: str
-    scope: Scope
+    scope: RecordScope
     project_id: str | None = None
     active: bool
     description: str | None = None
@@ -225,7 +308,7 @@ class RuleDetailResponse(StrictBaseModel):
 
 class DictionaryTermRecord(StrictBaseModel):
     id: str
-    scope: Scope
+    scope: RecordScope
     project_id: str | None = None
     source_term: str
     normalized_term: str
@@ -246,7 +329,7 @@ class PromptTemplateRecord(StrictBaseModel):
     id: str
     name: str
     prompt_type: str
-    scope: Scope
+    scope: RecordScope
     project_id: str | None = None
     version: int
     is_active: bool
@@ -268,7 +351,7 @@ class DeliveryTargetRecord(StrictBaseModel):
     name: str
     target_type: TargetType
     destination: Destination
-    scope: Scope
+    scope: RecordScope
     project_id: str | None = None
     enabled: bool
     is_sensitive: bool
