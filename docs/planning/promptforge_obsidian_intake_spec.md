@@ -23,7 +23,7 @@ No other folder should trigger automatic processing.
 5. User optionally reviews the note
 6. Watcher imports the note
 7. Note status changes to imported/processing/processed
-8. Note may be moved to another folder after processing
+8. If processing succeeds, the source draft may be moved out of `Inbox/Voice` after write-back. If processing or delivery fails, the source draft stays in `Inbox/Voice` for retry/review.
 
 ## Frontmatter template
 

@@ -413,6 +413,57 @@ keep me skipped
             self.assertEqual(len(repository.imported_rows), 0)
             self.assertEqual(len(seen_hashes), 1)
 
+    def test_process_note_path_keeps_source_note_when_delivery_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault_path = Path(tmpdir)
+            note_path = vault_path / "Inbox" / "Voice" / "failed-dispatch.md"
+            note_path.parent.mkdir(parents=True)
+            note_path.write_text(
+                """---
+status: new
+watch_eligible: true
+project: promptforge
+destination: claude_code
+prompt_type: planning
+target_type: cli_session
+target_identifier: claude-main
+mode: auto_dispatch
+priority: high
+requires_review: false
+---
+
+## Transcript
+ship the build notes
+""",
+                encoding="utf-8",
+            )
+
+            cfg = WatcherConfig(
+                vault_path=str(vault_path),
+                watch_folder="Inbox/Voice",
+                processed_folder="Processed/Voice",
+                webhook_enabled=False,
+            )
+            repository = InMemoryWatcherRepository()
+            seen_hashes: dict[str, str] = {}
+
+            _process_note_path(
+                note_path=note_path,
+                cfg=cfg,
+                repository=repository,
+                seen_hashes=seen_hashes,
+                source="event",
+            )
+
+            self.assertTrue(note_path.exists())
+            self.assertFalse((vault_path / "Processed" / "Voice" / "failed-dispatch.md").exists())
+            self.assertEqual(repository.imported_rows[0]["delivery"]["status"], "failed")
+            self.assertTrue(
+                repository.imported_rows[0]["delivery"]["error_text"].startswith(
+                    "unsupported_auto_dispatch_target:"
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

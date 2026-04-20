@@ -48,7 +48,7 @@ The recommended MVP stack is:
 12. Python validates, renders, and formats final prompt payload.
 13. Delivery record is created and queued or dispatched.
 14. Status and artifact links are written back to Postgres.
-15. Optional: note is updated in Obsidian with processing metadata and moved to a processed folder.
+15. Optional: on successful processing, note is updated in Obsidian with processing metadata and moved out of `Inbox/Voice` into a processed folder. Failed runs keep the source draft in place.
 
 ## Why this MVP is strong
 

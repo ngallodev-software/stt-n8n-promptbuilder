@@ -165,17 +165,20 @@ def _process_note_path(
                 status=dispatched.status,
                 error_text=dispatched.error_text,
             )
-        processed_path = write_back_note(
-            note_path=note_path,
-            note=note,
-            preprocess=bundle.preprocess,
-            delivery=bundle.delivery,
-            result=result,
-            processed_folder=cfg.processed_folder,
-            delivery_status=dispatched.status,
-        )
         print(f"  imported: intake_note_id={result.intake_note.id} prompt_generation_id={result.prompt_generation.id}")
-        print(f"  note_writeback: {processed_path}")
+        if _run_succeeded(result=result, delivery_status=dispatched.status):
+            processed_path = write_back_note(
+                note_path=note_path,
+                note=note,
+                preprocess=bundle.preprocess,
+                delivery=bundle.delivery,
+                result=result,
+                processed_folder=cfg.processed_folder,
+                delivery_status=dispatched.status,
+            )
+            print(f"  note_writeback: {processed_path}")
+        else:
+            print("  note_writeback: skipped (run_not_successful; source note preserved)")
         if dispatched.output_path:
             print(f"  delivery_output: {dispatched.output_path}")
     else:
@@ -211,6 +214,16 @@ def _drain_ready_paths(pending: dict[Path, float], pending_lock: Lock) -> list[P
                 ready.append(path)
                 pending.pop(path, None)
     return ready
+
+
+def _run_succeeded(*, result: ImportResult, delivery_status: str) -> bool:
+    if not result.imported:
+        return False
+    if result.processing_run is None or result.processing_run.status != "completed":
+        return False
+    if result.prompt_generation is None or result.prompt_generation.status != "rendered":
+        return False
+    return delivery_status != "failed"
 
 
 class _VaultEventHandler(FileSystemEventHandler):

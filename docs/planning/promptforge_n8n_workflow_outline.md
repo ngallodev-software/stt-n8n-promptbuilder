@@ -300,8 +300,8 @@ A rendered prompt can exist with no valid delivery target. In that case:
 
 #### Optional actions
 
-- trigger Obsidian write-back/update
-- move note to processed folder
+- trigger Obsidian write-back/update for successful runs
+- move note to processed folder only after a successful run; failed runs keep the source note in `Inbox/Voice`
 - append generated summary/tags
 
 ---

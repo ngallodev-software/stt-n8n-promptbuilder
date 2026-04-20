@@ -204,6 +204,12 @@ Recommended DB state:
 ### Step 7: trigger n8n
 POST webhook payload with identifiers and resolved baseline metadata.
 
+### Step 8: finalize source note lifecycle
+Recommended MVP behavior:
+- if the full run succeeds, write back metadata and move/delete the source draft from `Inbox/Voice`
+- if processing or delivery fails, keep the source draft in `Inbox/Voice`
+- do not create processed-note write-back artifacts for failed runs
+
 ---
 
 ## Reimport policy
