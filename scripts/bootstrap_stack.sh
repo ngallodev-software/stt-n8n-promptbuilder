@@ -13,6 +13,9 @@ if [[ ! -f .env ]]; then
   echo "No .env file found; using compose defaults from .env.example placeholders." >&2
 fi
 
+POSTGRES_USER="${POSTGRES_USER:-promptforge}"
+POSTGRES_DB="${POSTGRES_DB:-promptforge}"
+
 mkdir -p vault/Inbox/Voice vault/Processed/Voice vault/Processing/Error vault/Projects
 
 echo "Starting core services..."
@@ -23,6 +26,24 @@ echo "Waiting for Postgres..."
 
 echo "Applying Postgres schema if needed..."
 "$ROOT_DIR/scripts/migrate_postgres.sh"
+
+echo "Seeding operator catalogs if the database is still empty..."
+catalog_counts="$(
+  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 <<'SQL'
+SELECT
+  (SELECT COUNT(*) FROM projects)::text || ':' ||
+  (SELECT COUNT(*) FROM rulesets)::text || ':' ||
+  (SELECT COUNT(*) FROM rules)::text || ':' ||
+  (SELECT COUNT(*) FROM term_dictionary)::text || ':' ||
+  (SELECT COUNT(*) FROM prompt_templates)::text || ':' ||
+  (SELECT COUNT(*) FROM delivery_targets)::text;
+SQL
+)"
+if [[ "$catalog_counts" == "0:0:0:0:0:0" ]]; then
+  docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 < "$ROOT_DIR/docs/planning/promptforge_seed_data.sql"
+else
+  echo "Operator catalogs already present; skipping seed load."
+fi
 
 echo "Backfilling legacy plaintext console secrets if present..."
 docker compose exec -T promptforge-api python /app/scripts/migrate_console_secrets.py || {

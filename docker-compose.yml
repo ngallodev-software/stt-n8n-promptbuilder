@@ -12,6 +12,8 @@ services:
       - "127.0.0.1:${PROMPTFORGE_POSTGRES_HOST_PORT:-15439}:5432"
     volumes:
       - promptforge_postgres_data:/var/lib/postgresql/data
+      - ./docs/planning/promptforge_postgres_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+      - ./docs/planning/promptforge_seed_data.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U promptforge -d promptforge"]
       interval: 30s

@@ -34,6 +34,8 @@ Instead of starting with an empty schema, the seed pack gives you:
 
 This makes it much easier to test the watcher, preprocessing, rendering, and delivery flow end to end.
 
+In the live bootstrap path, the seed pack is also applied to an existing database when the operator catalogs are still empty, so the console pages do not depend on a fresh Postgres volume.
+
 ---
 
 ## Seeded projects

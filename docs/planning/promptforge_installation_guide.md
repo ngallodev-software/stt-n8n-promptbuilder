@@ -188,6 +188,8 @@ docker compose up -d
 docker compose ps
 ```
 
+If you use `scripts/bootstrap_stack.sh`, it will also apply the operator catalog seed pack to an existing database when those catalogs are still empty, so the console pages do not depend on a brand-new Postgres volume.
+
 Check logs:
 
 ```bash
