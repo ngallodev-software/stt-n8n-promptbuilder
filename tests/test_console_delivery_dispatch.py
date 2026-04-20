@@ -170,14 +170,18 @@ def test_live_session_dispatch_rejected_explicitly(
                 "targetSessionIdentifier": "claude-tax-main",
             },
         )
-        assert response.status_code == 501
+        assert response.status_code == 200
         body = response.json()
-        assert "not implemented in this environment" in body["detail"]
+        assert body["accepted"] is False
+        assert body["status"] == "failed"
+        assert body["machineStatus"] in {"unavailable", "dispatch_failed"}
+        assert body["sessionIdentifier"] == "claude-tax-main"
+        assert body["errorText"]
 
         deliveries = _delivery_history(client, PROMPT_GENERATION_ID)
         failed = next(row for row in deliveries if row["target_id"] == CLAUDE_TARGET_ID and row["status"] == "failed")
         assert failed["session_identifier"] == "claude-tax-main"
-        assert failed["dispatch_response_json"]["machine_status"] == "unsupported"
+        assert failed["dispatch_response_json"]["machine_status"] in {"unavailable", "dispatch_failed"}
 
     with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
         row = conn.execute(
@@ -191,5 +195,5 @@ def test_live_session_dispatch_rejected_explicitly(
         ).fetchone()
     assert row is not None
     assert row["status"] == "failed"
-    assert "not implemented in this environment" in (row["error_text"] or "")
-    assert row["dispatch_response_json"]["machine_status"] == "unsupported"
+    assert row["error_text"]
+    assert row["dispatch_response_json"]["machine_status"] in {"unavailable", "dispatch_failed"}
