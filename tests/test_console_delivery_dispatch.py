@@ -27,18 +27,28 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+def _delivery_history(client: TestClient, prompt_generation_id: str) -> list[dict[str, object]]:
+    response = client.get("/console/deliveries", params={"prompt_generation_id": prompt_generation_id})
+    assert response.status_code == 200
+    return response.json()["deliveries"]
+
+
 def test_target_health_reports_reality(seeded_console_database_url: str) -> None:
     del seeded_console_database_url
     with TestClient(app) as client:
         live_response = client.get(f"/console/targets/{CLAUDE_TARGET_ID}/health")
         assert live_response.status_code == 200
         live_body = live_response.json()
+        assert live_body["targetId"] == CLAUDE_TARGET_ID
+        assert live_body["targetType"] == "claude_session"
         assert live_body["healthStatus"] == "unknown"
         assert live_body["detail"] == "live_session_registry_unavailable"
 
         queue_response = client.get(f"/console/targets/{GENERIC_QUEUE_TARGET_ID}/health")
         assert queue_response.status_code == 200
         queue_body = queue_response.json()
+        assert queue_body["targetId"] == GENERIC_QUEUE_TARGET_ID
+        assert queue_body["targetType"] == "generic_queue"
         assert queue_body["healthStatus"] == "ok"
 
 
@@ -54,10 +64,23 @@ def test_generic_queue_dispatch_persists_attempt(seeded_console_database_url: st
         )
         assert response.status_code == 200
         body = response.json()
+        assert body["targetId"] == GENERIC_QUEUE_TARGET_ID
+        assert body["targetType"] == "generic_queue"
+        assert body["promptGenerationId"] == PROMPT_GENERATION_ID
         assert body["accepted"] is True
         assert body["status"] == "queued"
         assert body["machineStatus"] == "queued"
+        assert body["externalIdentifier"] == "manual-review"
+        assert body["sessionIdentifier"] is None
+        assert body["errorText"] is None
+        assert body["requestSummary"]["target_id"] == GENERIC_QUEUE_TARGET_ID
+        assert body["responseSummary"]["queue_name"] == "manual-review"
         delivery_id = body["deliveryId"]
+
+        deliveries = _delivery_history(client, PROMPT_GENERATION_ID)
+        assert deliveries[0]["id"] == delivery_id
+        assert deliveries[0]["status"] == "queued"
+        assert deliveries[0]["target_id"] == GENERIC_QUEUE_TARGET_ID
 
     with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
         row = conn.execute(
@@ -97,12 +120,22 @@ def test_obsidian_dispatch_writes_note_and_persists_attempt(
         )
         assert response.status_code == 200
         body = response.json()
+        assert body["targetId"] == OBSIDIAN_TARGET_ID
+        assert body["targetType"] == "obsidian_note"
+        assert body["promptGenerationId"] == PROMPT_GENERATION_ID
         assert body["accepted"] is True
         assert body["status"] == "delivered"
         assert body["machineStatus"] == "delivered"
         output_path = Path(body["externalIdentifier"])
+        assert tmp_path in output_path.parents
         assert output_path.exists()
+        assert body["responseSummary"]["output_path"] == str(output_path)
         delivery_id = body["deliveryId"]
+
+        deliveries = _delivery_history(client, PROMPT_GENERATION_ID)
+        assert deliveries[0]["id"] == delivery_id
+        assert deliveries[0]["status"] == "delivered"
+        assert deliveries[0]["target_id"] == OBSIDIAN_TARGET_ID
 
     with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
         row = conn.execute(
@@ -138,7 +171,13 @@ def test_live_session_dispatch_rejected_explicitly(
             },
         )
         assert response.status_code == 501
-        assert "not implemented in this environment" in response.json()["detail"]
+        body = response.json()
+        assert "not implemented in this environment" in body["detail"]
+
+        deliveries = _delivery_history(client, PROMPT_GENERATION_ID)
+        failed = next(row for row in deliveries if row["target_id"] == CLAUDE_TARGET_ID and row["status"] == "failed")
+        assert failed["session_identifier"] == "claude-tax-main"
+        assert failed["dispatch_response_json"]["machine_status"] == "unsupported"
 
     with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
         row = conn.execute(
