@@ -18,11 +18,14 @@ POSTGRES_DB="${POSTGRES_DB:-promptforge}"
 
 mkdir -p vault/Inbox/Voice vault/Processed/Voice vault/Processing/Error vault/Projects
 
-echo "Starting core services..."
-docker compose up -d --build postgres n8n promptforge-api
+echo "Starting Postgres..."
+docker compose up -d --build postgres
 
 echo "Waiting for Postgres..."
 "$ROOT_DIR/scripts/wait_for_postgres.sh"
+
+echo "Synchronizing Postgres role password with compose config..."
+"$ROOT_DIR/scripts/sync_postgres_password.sh"
 
 echo "Applying Postgres schema if needed..."
 "$ROOT_DIR/scripts/migrate_postgres.sh"
@@ -44,6 +47,9 @@ if [[ "$catalog_counts" == "0:0:0:0:0:0" ]]; then
 else
   echo "Operator catalogs already present; skipping seed load."
 fi
+
+echo "Starting app services..."
+docker compose up -d --build n8n promptforge-api
 
 echo "Backfilling legacy plaintext console secrets if present..."
 docker compose exec -T promptforge-api python /app/scripts/migrate_console_secrets.py || {

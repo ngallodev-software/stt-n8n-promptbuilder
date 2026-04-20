@@ -10,6 +10,7 @@ from cryptography.fernet import Fernet
 from psycopg.rows import dict_row
 
 from promptforge_services.api import app
+from promptforge_services import console_api
 
 
 PROJECT_ID = "22222222-2222-4222-8222-222222222222"
@@ -50,6 +51,28 @@ def test_console_settings_schema_tables_exist(seeded_console_database_url: str) 
         """,
     )
     assert row["table_count"] == 3
+
+
+def test_console_settings_reads_skip_missing_setting_tables(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def fake_fetch_all(database_url: str, sql: str, params: tuple[object, ...] = ()) -> list[dict[str, object]]:
+        calls.append(sql)
+        if "to_regclass('console_runtime_settings')" in sql:
+            return [{"runtime_exists": False, "secret_exists": False}]
+        raise AssertionError("settings rows should not be queried when tables are absent")
+
+    monkeypatch.setattr(console_api, "_fetch_all", fake_fetch_all)
+
+    runtime_rows, secret_rows = console_api._safe_fetch_settings_rows(
+        "postgresql://example",
+        scope="global",
+        project_id=None,
+    )
+
+    assert runtime_rows == []
+    assert secret_rows == []
+    assert len(calls) == 1
 
 
 def test_console_settings_get_default_global_path(seeded_console_database_url: str) -> None:

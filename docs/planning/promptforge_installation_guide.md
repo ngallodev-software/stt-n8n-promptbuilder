@@ -190,6 +190,8 @@ docker compose ps
 
 If you use `scripts/bootstrap_stack.sh`, it will also apply the operator catalog seed pack to an existing database when those catalogs are still empty, so the console pages do not depend on a brand-new Postgres volume.
 
+The bootstrap script also synchronizes the `promptforge` Postgres role password to the value resolved from `docker compose config`, which repairs reused database volumes when the compose env password changes.
+
 Check logs:
 
 ```bash

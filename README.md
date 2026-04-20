@@ -92,7 +92,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 ### 3) Bootstrap schema and workflows
 
-The helper script creates the vault folders, applies `docs/planning/promptforge_postgres_schema.sql`, and imports the n8n workflows on first boot:
+The helper script creates the vault folders, syncs the `promptforge` Postgres role password to the value resolved from `docker compose config`, applies `docs/planning/promptforge_postgres_schema.sql`, and imports the n8n workflows on first boot:
 
 ```bash
 ./scripts/bootstrap_stack.sh
@@ -102,6 +102,12 @@ If you want to re-run just the database schema migration:
 
 ```bash
 ./scripts/migrate_postgres.sh
+```
+
+If you need to repair a reused Postgres volume whose role password no longer matches the compose env, run:
+
+```bash
+./scripts/sync_postgres_password.sh
 ```
 
 If you need to backfill any legacy plaintext console secrets after enabling

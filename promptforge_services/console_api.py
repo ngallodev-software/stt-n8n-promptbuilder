@@ -359,6 +359,21 @@ def _normalize_secret_update(secrets_patch: dict[str, Any]) -> dict[str, str]:
     return normalized
 
 
+def _settings_tables_exist(database_url: str) -> bool:
+    rows = _fetch_all(
+        database_url,
+        """
+        SELECT
+            to_regclass('console_runtime_settings') IS NOT NULL AS runtime_exists,
+            to_regclass('console_secret_settings') IS NOT NULL AS secret_exists
+        """,
+    )
+    if not rows:
+        return False
+    row = rows[0]
+    return bool(row.get("runtime_exists")) and bool(row.get("secret_exists"))
+
+
 def _validate_project_scope(database_url: str, scope: str, project_id: str | None) -> None:
     if scope == Scope.PROJECT.value and project_id:
         _fetch_project_row(database_url, project_id)
@@ -370,6 +385,8 @@ def _safe_fetch_settings_rows(
     scope: str,
     project_id: str | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not _settings_tables_exist(database_url):
+        return [], []
     try:
         runtime_rows = _fetch_all(
             database_url,
@@ -788,6 +805,8 @@ def patch_console_runtime_settings(
     database_url = _require_db_url()
     scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
     _validate_project_scope(database_url, scope_value, project_value)
+    if not _settings_tables_exist(database_url):
+        raise raise_503_db_unavailable()
     normalized = _normalize_runtime_update(payload.runtime)
 
     previous_rows = _safe_fetch_settings_rows(
@@ -863,6 +882,8 @@ def patch_console_secret_settings(
     database_url = _require_db_url()
     scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
     _validate_project_scope(database_url, scope_value, project_value)
+    if not _settings_tables_exist(database_url):
+        raise raise_503_db_unavailable()
     normalized = _normalize_secret_update(payload.secrets)
     try:
         encrypted = {key: encrypt_secret(value) for key, value in normalized.items()}
