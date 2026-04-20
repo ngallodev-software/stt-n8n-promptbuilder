@@ -3214,13 +3214,35 @@ def patch_prompt_priority(prompt_generation_id: str, payload: PromptPriorityRequ
 
 @router.post("/llm/assist", response_model=LLMAssistResponse)
 def llm_assist(payload: LLMAssistRequest) -> LLMAssistResponse:
-    raise raise_unsupported(
-        "llm_assist_stubbed",
-        "LLM assist is stubbed for this API pass.",
-        endpoint="/console/llm/assist",
-        capability="console_llm_assist",
-        details={"context_type": payload.context_type},
-    )
+    llm_router = get_llm_router()
+    if not llm_router.enabled:
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "llm_assist_unavailable",
+                "message": "LLM assist is not implemented in this environment",
+                "supported": False,
+                "endpoint": "/console/llm/assist",
+                "transport": "llm_router",
+            },
+        )
+
+    context = {**(payload.context or {}), "context_type": payload.context_type}
+    review = llm_router.review_prompt(payload.prompt, context=context)
+    if review is None:
+        raise HTTPException(
+            status_code=501,
+            detail={
+                "code": "llm_assist_unavailable",
+                "message": "No configured LLM provider is available for assist",
+                "supported": False,
+                "endpoint": "/console/llm/assist",
+                "transport": "llm_router",
+            },
+        )
+    polished = (review.raw_response or {}).get("polished_prompt")
+    text = polished or review.summary or ""
+    return LLMAssistResponse(result=text, provider=review.provider_name, model=review.model_name)
 
 
 @router.patch("/intake/{intake_note_id}/archive")

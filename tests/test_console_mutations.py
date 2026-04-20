@@ -237,11 +237,11 @@ def test_template_activate_not_found(client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_template_create_and_patch_persists_changes(
+def test_template_create_and_patch_appends_version_history(
     client: TestClient,
     seeded_console_database_url: str,
 ) -> None:
-    """POST /templates and PATCH /templates/{id} - happy path."""
+    """POST /templates and PATCH /templates/{id} - append-only versioning."""
     payload = {
         "name": "test-template-create",
         "promptType": "planning",
@@ -252,6 +252,7 @@ def test_template_create_and_patch_persists_changes(
         "isActive": False,
     }
     template_id: str | None = None
+    patched_template_id: str | None = None
     try:
         response = client.post("/console/templates", json=payload)
         assert response.status_code == 200
@@ -259,6 +260,7 @@ def test_template_create_and_patch_persists_changes(
         assert created["name"] == "test-template-create"
         assert created["template_family_key"] == "test-template-family"
         template_id = created["id"]
+        assert created["version"] == 2
 
         patch_response = client.patch(
             f"/console/templates/{template_id}",
@@ -270,27 +272,41 @@ def test_template_create_and_patch_persists_changes(
         )
         assert patch_response.status_code == 200
         patched = patch_response.json()["prompt_template"]
+        patched_template_id = patched["id"]
+        assert patched_template_id != template_id
         assert patched["body"] == "Updated body for {{ project_slug }}"
         assert patched["version"] == 3
         assert patched["is_active"] is True
 
         with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 """
                 SELECT id, body_template, version, is_active
                 FROM prompt_templates
-                WHERE id = %s
+                WHERE name = %s
+                  AND scope = 'global'
+                  AND project_id IS NULL
+                  AND output_contract_name = %s
+                ORDER BY version
                 """,
-                (template_id,),
-            ).fetchone()
-        assert row is not None
-        assert row["body_template"] == "Updated body for {{ project_slug }}"
-        assert int(row["version"]) == 3
-        assert bool(row["is_active"]) is True
+                ("test-template-create", "test-template-family"),
+            ).fetchall()
+        assert len(rows) == 2
+        assert rows[0]["id"] == template_id
+        assert rows[0]["body_template"] == "Initial body for {{ project_slug }}"
+        assert int(rows[0]["version"]) == 2
+        assert bool(rows[0]["is_active"]) is False
+        assert rows[1]["id"] == patched_template_id
+        assert rows[1]["body_template"] == "Updated body for {{ project_slug }}"
+        assert int(rows[1]["version"]) == 3
+        assert bool(rows[1]["is_active"]) is True
     finally:
-        if template_id:
+        if template_id or patched_template_id:
             with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
-                conn.execute("DELETE FROM prompt_templates WHERE id = %s", (template_id,))
+                conn.execute(
+                    "DELETE FROM prompt_templates WHERE id = ANY(%s)",
+                    ([value for value in (template_id, patched_template_id) if value],),
+                )
 
 
 # ============================================================================

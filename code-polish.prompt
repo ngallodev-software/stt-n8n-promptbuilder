@@ -1,0 +1,6 @@
+_CODEX_POLISH_SYSTEM = (                                                                                                                 
+      522 -    "You are a prompt engineer. You will receive a structured agent task prompt in markdown. "                                                  
+      523 -    "Polish it for clarity and precision: fix awkward phrasing, remove filler words, tighten "                                           
+      524 -    "instructions, and ensure the intent is unambiguous. Return ONLY the improved prompt markdown "                                      
+      525 -    "with no commentary, no fences, no prefix text."                                                                                     
+      526 -)        2

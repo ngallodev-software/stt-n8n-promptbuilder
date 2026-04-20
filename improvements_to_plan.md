@@ -20,7 +20,7 @@ Do not treat n8n orchestration, llama.cpp integration, and live CLI dispatch as 
 
 The docs currently disagree on key runtime contracts:
 
-- `promptforge_docker_compose_mvp.yml` starts services with `python -m promptforge_api`, but the code exposes `promptforge_services.api:app`.
+- the old `promptforge_docker_compose_mvp.yml` is superseded by the root `docker-compose.yml`, which should target `promptforge_services.api:app`.
 - Structured-output examples are inconsistent about `contract_name` and even the contract identifier itself.
 - The review path is underspecified: `review_item_v1` exists, but review is not modeled as a first-class lifecycle in the same way as prompt generation and delivery.
 
@@ -131,7 +131,7 @@ Owns:
 
 - `tests/`
 - `.env.example`
-- `docs/planning/promptforge_docker_compose_mvp.yml`
+- `docker-compose.yml`
 
 Tasks:
 

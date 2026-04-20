@@ -23,7 +23,7 @@
 
   Docs plan vs code:
 
-- spec says MVP could use polling plus content hashing or filesystem watch plus stable delay before import in docs/planning/promptforge_python_watcher_and_services_spec.md:154
+- spec says MVP could use polling plus content hashing or filesystem watch plus stable delay before import in `docs/planning/archive/promptforge_python_watcher_and_services_spec.md`
 - safe flow is:
       1. file appears
       2. wait short stabilization interval

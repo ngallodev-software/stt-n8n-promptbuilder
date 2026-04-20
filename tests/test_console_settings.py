@@ -248,6 +248,32 @@ def test_console_settings_secret_rotation_fails_closed_without_master_key(
     assert response.json()["detail"]["code"] == "settings_secrets_stubbed"
 
 
+def test_console_llm_assist_returns_structured_unsupported_response(
+    seeded_console_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    del seeded_console_database_url
+    monkeypatch.setenv("PROMPTFORGE_LLM_ENABLED", "0")
+    client = _client()
+    response = client.post(
+        "/console/llm/assist",
+        json={
+            "prompt": "polish this prompt",
+            "context_type": "general",
+            "context": {"project_slug": "the-tax-machine"},
+        },
+    )
+    assert response.status_code == 501
+    body = response.json()["detail"]
+    assert body == {
+        "code": "llm_assist_unavailable",
+        "message": "LLM assist is not implemented in this environment",
+        "supported": False,
+        "endpoint": "/console/llm/assist",
+        "transport": "llm_router",
+    }
+
+
 def test_console_settings_reads_never_return_raw_secret_values(seeded_console_database_url: str) -> None:
     with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
         updated = conn.execute(

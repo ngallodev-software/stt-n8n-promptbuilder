@@ -48,6 +48,75 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(body["delivery"]["target_type"], "claude_session")
         self.assertEqual(body["delivery"]["priority"], "high")
 
+    def test_structured_validation_error_surfaces_as_400(self) -> None:
+        response = self.client.post(
+            "/validate",
+            json={
+                "contract_name": "agent_task_v1",
+                "payload": {
+                    "intent": "agent_task",
+                    "project_slug": "the-tax-machine",
+                    "prompt_type": "coding-cli",
+                    "destination": "cli",
+                    "target_identifier": "claude-tax-main",
+                    "mode": "queue",
+                    "requires_review": False,
+                    "final_prompt_markdown": "",
+                    "notes": [],
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        detail = response.json()["detail"]
+        self.assertIn("final_prompt_markdown", detail)
+        self.assertIn("value must be non-empty", detail)
+
+    def test_render_endpoint_rejects_empty_structured_output(self) -> None:
+        response = self.client.post(
+            "/render",
+            json={
+                "contract_name": "agent_task_v1",
+                "payload": {
+                    "intent": "agent_task",
+                    "project_slug": "the-tax-machine",
+                    "prompt_type": "coding-cli",
+                    "destination": "cli",
+                    "target_identifier": "claude-tax-main",
+                    "mode": "queue",
+                    "requires_review": False,
+                    "final_prompt_markdown": "",
+                    "notes": [],
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        detail = response.json()["detail"]
+        self.assertIn("final_prompt_markdown", detail)
+        self.assertIn("value must be non-empty", detail)
+
+    def test_prepare_delivery_endpoint_rejects_empty_structured_output(self) -> None:
+        response = self.client.post(
+            "/prepare-delivery",
+            json={
+                "contract_name": "agent_task_v1",
+                "payload": {
+                    "intent": "agent_task",
+                    "project_slug": "the-tax-machine",
+                    "prompt_type": "coding-cli",
+                    "destination": "cli",
+                    "target_identifier": "claude-tax-main",
+                    "mode": "queue",
+                    "requires_review": False,
+                    "final_prompt_markdown": "",
+                    "notes": [],
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        detail = response.json()["detail"]
+        self.assertIn("final_prompt_markdown", detail)
+        self.assertIn("value must be non-empty", detail)
+
 
 if __name__ == "__main__":
     unittest.main()

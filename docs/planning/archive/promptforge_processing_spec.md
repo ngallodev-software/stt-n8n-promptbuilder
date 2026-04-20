@@ -188,6 +188,28 @@ Action:
 - optionally set `requires_review = true`
 - keep all intermediate artifacts
 
+### HTTP contract notes
+
+The HTTP service endpoints that sit on top of this pipeline should keep the same failure semantics:
+
+- `POST /validate` returns `400` with the Pydantic validation detail when structured output is malformed.
+- `POST /render` returns `400` with the same validation detail if the structured payload cannot be rendered safely.
+- `POST /prepare-delivery` returns `400` for invalid or incomplete structured payloads before any delivery record is created.
+- live `claude_session`, `codex_session`, and `chat_session` dispatch remains unsupported in the Python backend until a real transport exists.
+- unsupported live dispatch should persist the failed delivery attempt and leave the prompt-generation artifact intact.
+
+### Console backend notes
+
+The console mutation surface should use explicit, validation-first behavior rather than silent fallthrough:
+
+- `/console/dictionary/upsert` is a real upsert endpoint and must reject invalid scope or empty terms before any write.
+- `/console/llm/assist` should return a structured `501` stub when the LLM router is disabled or unavailable.
+- `/console/settings/secrets` must fail closed with a `503` when secret encryption is not configured.
+- `/console/admin/purge-archived-notes` remains an admin-only destructive action and must require the exact confirmation string.
+- `/console/deliveries/{id}/retry` and `/console/deliveries/{id}/reroute` become immutable after a terminal delivery state.
+- queue-only reroutes may still happen before terminal state is reached.
+- session-registry support is currently read/dispatch oriented; there is no public CRUD surface for live session rows yet.
+
 ### Soft resolution failures
 Examples:
 

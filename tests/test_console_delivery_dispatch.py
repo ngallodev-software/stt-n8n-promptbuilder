@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from pathlib import Path
 
 import psycopg
@@ -103,6 +104,201 @@ def test_generic_queue_dispatch_persists_attempt(seeded_console_database_url: st
     assert row["session_identifier"] is None
     assert row["dispatch_request_json"]["target_id"] == GENERIC_QUEUE_TARGET_ID
     assert row["dispatch_response_json"]["machine_status"] == "queued"
+
+
+def test_delivery_retry_preserves_dispatch_artifacts(
+    seeded_console_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROMPTFORGE_VAULT_PATH", str(Path.cwd() / "vault"))
+    with TestClient(app) as client:
+        response = client.post(
+            f"/console/targets/{GENERIC_QUEUE_TARGET_ID}/dispatch",
+            json={
+                "promptGenerationId": PROMPT_GENERATION_ID,
+                "payloadContent": "Queue this prompt.",
+            },
+        )
+        assert response.status_code == 200
+        delivery_id = response.json()["deliveryId"]
+
+    with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
+        before = conn.execute(
+            """
+            SELECT
+                status::text AS status,
+                queued_at,
+                error_text,
+                prompt_generation_id,
+                target_id,
+                dispatch_request_json,
+                dispatch_response_json
+            FROM deliveries
+            WHERE id = %s
+            """,
+            (delivery_id,),
+        ).fetchone()
+    assert before is not None
+    before_request = before["dispatch_request_json"]
+    before_response = before["dispatch_response_json"]
+
+    with TestClient(app) as client:
+        retry = client.post(f"/console/deliveries/{delivery_id}/retry")
+        assert retry.status_code == 200
+
+    with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
+        after = conn.execute(
+            """
+            SELECT
+                status::text AS status,
+                queued_at,
+                error_text,
+                prompt_generation_id,
+                target_id,
+                dispatch_request_json,
+                dispatch_response_json
+            FROM deliveries
+            WHERE id = %s
+            """,
+            (delivery_id,),
+        ).fetchone()
+    assert after is not None
+    assert after["status"] == "queued"
+    assert after["queued_at"] is not None
+    assert after["error_text"] is None
+    assert after["prompt_generation_id"] == before["prompt_generation_id"]
+    assert after["target_id"] == before["target_id"]
+    assert after["dispatch_request_json"] == before_request
+    assert after["dispatch_response_json"] == before_response
+
+
+def test_queued_delivery_can_reroute_to_a_queue_target(
+    seeded_console_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROMPTFORGE_VAULT_PATH", str(Path.cwd() / "vault"))
+    reroute_target_id = str(uuid.uuid4())
+    reroute_target_identifier = "manual-review-reroute"
+    with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
+        conn.execute(
+            """
+            INSERT INTO delivery_targets (
+                id,
+                name,
+                target_type,
+                target_identifier,
+                scope,
+                project_id,
+                is_default,
+                is_auto_dispatch_safe,
+                config_json
+            ) VALUES (
+                %s,
+                'Manual review reroute queue',
+                'generic_queue',
+                %s,
+                'global',
+                NULL,
+                FALSE,
+                FALSE,
+                '{"adapter":"generic_queue","queue_name":"manual-review-reroute"}'::jsonb
+            )
+            """,
+            (reroute_target_id, reroute_target_identifier),
+        )
+
+    delivery_id: str | None = None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/console/targets/{GENERIC_QUEUE_TARGET_ID}/dispatch",
+                json={
+                    "promptGenerationId": PROMPT_GENERATION_ID,
+                    "payloadContent": "Queue this prompt.",
+                },
+            )
+            assert response.status_code == 200
+            body = response.json()
+            delivery_id = body["deliveryId"]
+            assert body["status"] == "queued"
+            assert body["targetType"] == "generic_queue"
+
+            reroute = client.post(f"/console/deliveries/{delivery_id}/reroute", json={"targetId": reroute_target_id})
+            assert reroute.status_code == 200
+            assert reroute.json() == {"ok": True}
+
+        with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    status::text AS status,
+                    delivery_target_id,
+                    target_type::text AS target_type,
+                    target_identifier
+                FROM deliveries
+                WHERE id = %s
+                """,
+                (delivery_id,),
+            ).fetchone()
+        assert row is not None
+        assert row["status"] == "queued"
+        assert row["delivery_target_id"] == reroute_target_id
+        assert row["target_type"] == "generic_queue"
+        assert row["target_identifier"] == reroute_target_identifier
+    finally:
+        with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
+            conn.execute("DELETE FROM delivery_targets WHERE id = %s", (reroute_target_id,))
+
+
+def test_terminal_delivery_mutations_are_locked(
+    seeded_console_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("PROMPTFORGE_VAULT_PATH", str(tmp_path))
+    with TestClient(app) as client:
+        response = client.post(
+            f"/console/targets/{OBSIDIAN_TARGET_ID}/dispatch",
+            json={
+                "promptGenerationId": PROMPT_GENERATION_ID,
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        delivery_id = body["deliveryId"]
+        assert body["status"] == "delivered"
+
+        retry = client.post(f"/console/deliveries/{delivery_id}/retry")
+        assert retry.status_code == 409
+        assert retry.json()["detail"]["code"] == "delivery_retry_not_allowed"
+
+        reroute = client.post(
+            f"/console/deliveries/{delivery_id}/reroute",
+            json={"targetId": GENERIC_QUEUE_TARGET_ID},
+        )
+        assert reroute.status_code == 409
+        assert reroute.json()["detail"]["code"] == "delivery_reroute_locked"
+
+    with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
+        row = conn.execute(
+            """
+            SELECT
+                status::text AS status,
+                delivery_target_id,
+                target_type::text AS target_type,
+                target_identifier,
+                error_text
+            FROM deliveries
+            WHERE id = %s
+            """,
+            (delivery_id,),
+        ).fetchone()
+    assert row is not None
+    assert row["status"] == "delivered"
+    assert row["delivery_target_id"] == OBSIDIAN_TARGET_ID
+    assert row["target_type"] == "obsidian_note"
+    assert row["target_identifier"] == "obsidian-writeback"
+    assert row["error_text"] is None
 
 
 def test_obsidian_dispatch_writes_note_and_persists_attempt(

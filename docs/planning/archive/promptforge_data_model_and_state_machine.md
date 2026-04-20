@@ -106,6 +106,15 @@ Fields:
 - `is_active`
 - `description`
 
+Versioning rule:
+
+- treat each row as immutable history
+- create a new row for a new version
+- select the active row with `is_active = true`
+- for project rulesets, `projects.active_ruleset_id` is the pointer to the current active row
+- patch operations must never overwrite an older row in place
+- tests should assert that a patch creates a later row and preserves the prior version in history
+
 ### rules
 
 Fields:
@@ -117,6 +126,11 @@ Fields:
 - `enabled`
 - `match_conditions_json`
 - `action_json`
+
+Versioning note:
+
+- rules are mutable inside a ruleset, so patch operations update the existing row in place
+- version history lives on the surrounding ruleset/template records, not on the individual rule row
 
 ### term_dictionary
 
@@ -143,6 +157,15 @@ Fields:
 - `body_template`
 - `output_contract_name`
 - `is_active`
+
+Versioning rule:
+
+- treat each row as immutable history
+- create a new row for a new version
+- select the active row with `is_active = true`
+- active rows are unique per scope/project/prompt type bucket
+- patch operations must never overwrite an older row in place
+- tests should assert that a patch creates a later row and preserves the prior version in history
 
 ### prompt_generations
 
@@ -173,6 +196,31 @@ Fields:
 - `is_auto_dispatch_safe`
 - `config_json`
 
+### delivery_session_registry
+
+Persistent registry for live chat and CLI delivery sessions.
+
+Fields:
+
+- `id`
+- `delivery_target_id` nullable
+- `target_type`
+- `target_identifier`
+- `session_identifier`
+- `session_status`
+- `provider_name` nullable
+- `is_current`
+- `is_attached`
+- `is_busy`
+- `is_reachable`
+- `is_stale`
+- `last_seen_at` nullable
+- `heartbeat_at` nullable
+- `ended_at` nullable
+- `metadata_json`
+- `created_at`
+- `updated_at`
+
 ### deliveries
 
 Fields:
@@ -185,10 +233,29 @@ Fields:
 - `target_identifier`
 - `mode`
 - `status`
+- `session_identifier` nullable
+- `dispatch_request_json`
+- `dispatch_response_json`
 - `queued_at`
 - `dispatched_at` nullable
 - `acked_at` nullable
 - `error_text` nullable
+
+Delivery attempt rule:
+
+- each row is one delivery attempt
+- retries create new rows rather than overwriting prior attempts
+- the attempt history is already stored in `deliveries`
+- once a delivery reaches a terminal state, retry and reroute endpoints must not mutate the row
+- queued deliveries may still be rerouted to another queue target before they become terminal
+
+### delivery_session_registry
+
+The session registry is a live lookup table for chat and CLI transports, not a public CRUD surface.
+
+- current API coverage may expose health and dispatch behavior for live targets
+- until a real transport exists, live session dispatch should stay unsupported in the Python backend
+- tests should validate the unsupported path and the persisted failed delivery attempt, not invent registry writes
 
 ### processing_runs
 
@@ -203,6 +270,29 @@ Fields:
 - `error_stage` nullable
 - `trace_json`
 
+### workflow_error_records
+
+Append-only exact error rows used for triage and human intervention.
+
+Fields:
+
+- `id`
+- `source_kind`
+- `project_id` nullable
+- `intake_note_id` nullable
+- `utterance_id` nullable
+- `prompt_generation_id` nullable
+- `delivery_id` nullable
+- `processing_run_id` nullable
+- `delivery_target_id` nullable
+- `stage_name` nullable
+- `error_class` nullable
+- `error_code` nullable
+- `error_message`
+- `error_context_json`
+- `human_intervention_required`
+- `created_at`
+
 ## Scope precedence
 
 When resolving configuration:
@@ -216,6 +306,11 @@ This precedence should apply to:
 - prompt templates
 - delivery targets
 - formatting profiles
+
+## Error reporting rule
+
+Store exact error rows in `workflow_error_records` and derive summary fingerprints on read.
+Do not bake computed fingerprints into the persisted record shape.
 
 ## Workflow state machines
 
@@ -298,3 +393,7 @@ The MVP should be able to answer:
 ## Recommendation
 
 Keep all text stages append-only and all state transitions explicit. Do not overwrite raw text, cleaned text, or final prompt artifacts.
+
+Rulesets and prompt templates are versioned configuration records, not lineage artifacts. Editing them should preserve the prompt-generation history that already references an older version.
+
+Delivery mutations should stay narrow: retry and status updates may change delivery state, queue timestamps, and error text, but they must not rewrite the linked prompt generation, raw transcript, or rendered prompt content.
