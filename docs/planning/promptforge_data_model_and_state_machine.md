@@ -278,6 +278,38 @@ Transitions:
 - `dispatching -> failed`
 - `queued -> failed`
 
+## Console mutation contract notes
+
+The console backend mutation contract has three explicit guarantees that should remain stable:
+
+1. Delivery mutation immutability for non-queue destinations
+- For destinations other than `queue_only`, terminal delivery records (`delivered`, `acked`, `failed`) are immutable for:
+- `POST /console/deliveries/{id}/retry`
+- `POST /console/deliveries/{id}/reroute`
+- `PATCH /console/deliveries/{id}/status`
+- These operations return `409` with structured error details and do not modify the delivery row.
+
+2. Queue-only carveout
+- `queue_only` deliveries are intentionally mutable, including records in terminal statuses.
+- This supports operator-driven review queue correction and replay workflows.
+
+3. Append-only rules/template mutations
+- `PATCH /console/rules/{id}` creates a new `rulesets` version row and clones rules into the new version, applying the patch only in that new version.
+- `PATCH /console/templates/{id}` creates a new `prompt_templates` row with a strictly increasing version.
+- Existing versions remain queryable for traceability; active pointers are moved forward instead of in-place updates.
+
+## Unsupported dispatch envelope
+
+`POST /console/targets/{id}/dispatch` returns a structured `501` envelope for unsupported target types (for example `pf_target_type = none`):
+
+- `detail.code = "unsupported_target_type"`
+- `detail.status = "unsupported"`
+- `detail.machine_status = "unsupported"`
+- `detail.capability = "delivery_dispatch"`
+- `detail.details` includes `target_type`, plus persisted `delivery_id` and `status`
+
+Even when unsupported, the backend still records a failed delivery attempt for auditability.
+
 ## Important separation rule
 
 A prompt can be rendered successfully even if delivery fails.
