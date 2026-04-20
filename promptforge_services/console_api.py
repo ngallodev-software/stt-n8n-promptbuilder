@@ -1164,6 +1164,7 @@ def _prompt_template_record(row: dict[str, Any]) -> PromptTemplateRecord:
 
 
 def _delivery_target_record(row: dict[str, Any]) -> DeliveryTargetRecord:
+    health = compute_target_health(row)
     return DeliveryTargetRecord(
         id=_as_str(row["id"]),
         name=row["name"],
@@ -1176,10 +1177,27 @@ def _delivery_target_record(row: dict[str, Any]) -> DeliveryTargetRecord:
         is_sensitive=bool(row["is_sensitive"]),
         requires_confirmation=bool(row["requires_confirmation"]),
         environment=row["environment"],
-        validation_status=row["validation_status"],
-        validation_detail=row.get("validation_detail"),
+        validation_status=health.status,
+        validation_detail=health.detail,
         updated_at=_to_iso(row["updated_at"]),
     )
+
+
+def _raise_delivery_schema_dependency(exc: Exception) -> None:
+    if isinstance(exc, psycopg.Error):
+        sqlstate = getattr(exc, "sqlstate", None)
+        if sqlstate in {"42703", "42P01"}:
+            diag = getattr(exc, "diag", None)
+            column_name = getattr(diag, "column_name", None)
+            table_name = getattr(diag, "table_name", None)
+            if column_name:
+                detail = f"delivery_dispatch_schema_dependency_missing:deliveries.{column_name}"
+            elif table_name:
+                detail = f"delivery_dispatch_schema_dependency_missing:{table_name}"
+            else:
+                detail = "delivery_dispatch_schema_dependency_missing:deliveries.dispatch_columns"
+            raise HTTPException(status_code=503, detail=detail) from exc
+    raise exc
 
 
 def _fetch_ruleset_row(database_url: str, ruleset_id: str) -> dict[str, Any] | None:
@@ -1374,48 +1392,52 @@ def _create_delivery_attempt(
         "environment": request.environment,
         "dry_run": request.dry_run,
     }
-    inserted = _fetch_all(
-        database_url,
-        """
-        INSERT INTO deliveries (
-            prompt_generation_id,
-            delivery_target_id,
-            destination,
-            target_type,
-            target_identifier,
-            mode,
-            status,
-            priority,
-            queued_at,
-            session_identifier,
-            dispatch_request_json
-        ) VALUES (
-            %s,
-            %s,
-            %s::pf_destination,
-            %s::pf_target_type,
-            %s,
-            %s::pf_delivery_mode,
-            'dispatching'::pf_delivery_status,
-            %s::pf_priority,
-            now(),
-            %s,
-            %s::jsonb
+    try:
+        inserted = _fetch_all(
+            database_url,
+            """
+            INSERT INTO deliveries (
+                prompt_generation_id,
+                delivery_target_id,
+                destination,
+                target_type,
+                target_identifier,
+                mode,
+                status,
+                priority,
+                queued_at,
+                session_identifier,
+                dispatch_request_json
+            ) VALUES (
+                %s,
+                %s,
+                %s::pf_destination,
+                %s::pf_target_type,
+                %s,
+                %s::pf_delivery_mode,
+                'dispatching'::pf_delivery_status,
+                %s::pf_priority,
+                now(),
+                %s,
+                %s::jsonb
+            )
+            RETURNING id
+            """,
+            (
+                prompt_generation_id,
+                delivery_target_id,
+                destination,
+                target_row["target_type"],
+                target_row["target_identifier"],
+                mode,
+                priority,
+                request.target_session_identifier,
+                json.dumps(request_json),
+            ),
         )
-        RETURNING id
-        """,
-        (
-            prompt_generation_id,
-            delivery_target_id,
-            destination,
-            target_row["target_type"],
-            target_row["target_identifier"],
-            mode,
-            priority,
-            request.target_session_identifier,
-            json.dumps(request_json),
-        ),
-    )
+    except Exception as exc:
+        _raise_delivery_schema_dependency(exc)
+        raise
     if not inserted:
         raise raise_503_db_unavailable()
     delivery_row = _fetch_delivery_row(database_url, _as_str(inserted[0]["id"]))
@@ -1438,58 +1460,62 @@ def _update_delivery_attempt(
 ) -> dict[str, Any]:
     queued_clause = "queued_at = now()," if status == "queued" else ""
     dispatched_clause = "dispatched_at = now()," if status in {"delivered", "acked", "failed"} else ""
-    rows = _fetch_all(
-        database_url,
-        f"""
-        UPDATE deliveries
-        SET status = %s::pf_delivery_status,
-            mode = COALESCE(%s::pf_delivery_mode, mode),
-            priority = COALESCE(%s::pf_priority, priority),
-            session_identifier = %s,
-            dispatch_request_json = %s::jsonb,
-            dispatch_response_json = %s::jsonb,
-            {queued_clause}
-            {dispatched_clause}
-            error_text = %s
-        WHERE id = %s
-        RETURNING
-            id,
-            prompt_generation_id,
-            delivery_target_id AS target_id,
-            session_identifier,
-            status::text AS status,
-            destination::text AS destination,
-            mode::text AS mode,
-            priority::text AS priority,
-            GREATEST(
-                0,
-                (
-                    SELECT COUNT(*)::int - 1
-                    FROM deliveries d2
-                    WHERE d2.prompt_generation_id = deliveries.prompt_generation_id
-                      AND d2.created_at <= deliveries.created_at
-                      AND d2.status = 'failed'
-                )
-            ) AS retry_count,
-            COALESCE(dispatch_request_json, '{{}}'::jsonb) AS dispatch_request_json,
-            COALESCE(dispatch_response_json, '{{}}'::jsonb) AS dispatch_response_json,
-            error_text AS failure_text,
-            NULL::text AS ack_text,
-            created_at,
-            COALESCE(dispatched_at, queued_at, created_at) AS updated_at,
-            dispatched_at
-        """,
-        (
-            status,
-            mode,
-            priority,
-            session_identifier,
-            json.dumps(request_json),
-            json.dumps(response_json),
-            error_text,
-            delivery_id,
-        ),
-    )
+    try:
+        rows = _fetch_all(
+            database_url,
+            f"""
+            UPDATE deliveries
+            SET status = %s::pf_delivery_status,
+                mode = COALESCE(%s::pf_delivery_mode, mode),
+                priority = COALESCE(%s::pf_priority, priority),
+                session_identifier = %s,
+                dispatch_request_json = %s::jsonb,
+                dispatch_response_json = %s::jsonb,
+                {queued_clause}
+                {dispatched_clause}
+                error_text = %s
+            WHERE id = %s
+            RETURNING
+                id,
+                prompt_generation_id,
+                delivery_target_id AS target_id,
+                session_identifier,
+                status::text AS status,
+                destination::text AS destination,
+                mode::text AS mode,
+                priority::text AS priority,
+                GREATEST(
+                    0,
+                    (
+                        SELECT COUNT(*)::int - 1
+                        FROM deliveries d2
+                        WHERE d2.prompt_generation_id = deliveries.prompt_generation_id
+                          AND d2.created_at <= deliveries.created_at
+                          AND d2.status = 'failed'
+                    )
+                ) AS retry_count,
+                COALESCE(dispatch_request_json, '{{}}'::jsonb) AS dispatch_request_json,
+                COALESCE(dispatch_response_json, '{{}}'::jsonb) AS dispatch_response_json,
+                error_text AS failure_text,
+                NULL::text AS ack_text,
+                created_at,
+                COALESCE(dispatched_at, queued_at, created_at) AS updated_at,
+                dispatched_at
+            """,
+            (
+                status,
+                mode,
+                priority,
+                session_identifier,
+                json.dumps(request_json),
+                json.dumps(response_json),
+                error_text,
+                delivery_id,
+            ),
+        )
+    except Exception as exc:
+        _raise_delivery_schema_dependency(exc)
+        raise
     if not rows:
         raise raise_404("delivery_not_found")
     return _delivery_from_row(rows[0])
@@ -1993,7 +2019,7 @@ def _dispatch_target_payload(
         vault_path=vault_path,
     )
     target_type = str(target_row["target_type"])
-    supported_types = {"obsidian_note", "generic_queue"}
+    supported_types = {"obsidian_note", "generic_queue", "claude_session", "codex_session", "chat_session"}
     unsupported = target_type not in supported_types
     if payload.dry_run:
         if unsupported:
