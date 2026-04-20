@@ -381,11 +381,14 @@ class DeliveryRecord(StrictBaseModel):
     id: str
     prompt_generation_id: str
     target_id: str | None = None
+    session_identifier: str | None = None
     status: DeliveryStatusValue
     destination: Destination
     mode: Mode
     priority: PriorityLevel
     retry_count: int
+    dispatch_request_json: dict[str, Any] = Field(default_factory=dict)
+    dispatch_response_json: dict[str, Any] = Field(default_factory=dict)
     failure_text: str | None = None
     ack_text: str | None = None
     created_at: str
@@ -512,6 +515,7 @@ class DeliveryTargetRecord(StrictBaseModel):
     id: str
     name: str
     target_type: TargetType
+    target_identifier: str
     destination: Destination
     scope: RecordScope
     project_id: str | None = None
@@ -520,7 +524,52 @@ class DeliveryTargetRecord(StrictBaseModel):
     requires_confirmation: bool
     environment: str
     validation_status: str
+    validation_detail: str | None = None
     updated_at: str
+
+
+class DeliveryTargetDispatchRequest(StrictBaseModel):
+    delivery_id: str | None = None
+    prompt_generation_id: str | None = Field(default=None, alias="promptGenerationId")
+    target_session_identifier: str | None = Field(default=None, alias="targetSessionIdentifier")
+    payload_content: str | None = Field(default=None, alias="payloadContent")
+    payload_json: dict[str, Any] = Field(default_factory=dict, alias="payloadJson")
+    priority: PriorityLevel | None = None
+    mode: Mode | None = None
+    environment: str | None = None
+    dry_run: bool = Field(default=False, alias="dryRun")
+
+
+class DeliveryTargetDispatchResponse(StrictBaseModel):
+    delivery_id: str = Field(alias="deliveryId")
+    target_id: str = Field(alias="targetId")
+    target_type: TargetType = Field(alias="targetType")
+    accepted: bool
+    status: str
+    machine_status: str = Field(alias="machineStatus")
+    external_identifier: str | None = Field(default=None, alias="externalIdentifier")
+    session_identifier: str | None = Field(default=None, alias="sessionIdentifier")
+    prompt_generation_id: str | None = Field(default=None, alias="promptGenerationId")
+    requested_at: str = Field(alias="requestedAt")
+    dispatched_at: str | None = Field(default=None, alias="dispatchedAt")
+    updated_at: str = Field(alias="updatedAt")
+    retry_count: int = Field(alias="retryCount")
+    warnings: list[str] = Field(default_factory=list)
+    error_text: str | None = Field(default=None, alias="errorText")
+    request_summary: dict[str, Any] = Field(default_factory=dict, alias="requestSummary")
+    response_summary: dict[str, Any] = Field(default_factory=dict, alias="responseSummary")
+
+
+class DeliveryTargetHealthResponse(StrictBaseModel):
+    target_id: str = Field(alias="targetId")
+    target_type: TargetType = Field(alias="targetType")
+    health_status: str = Field(alias="healthStatus")
+    detail: str | None = None
+    attached: bool | None = None
+    busy: bool | None = None
+    reachable: bool | None = None
+    stale: bool | None = None
+    updated_at: str = Field(alias="updatedAt")
 
 
 class DeliveryTargetListResponse(PaginatedResponse[DeliveryTargetRecord]):

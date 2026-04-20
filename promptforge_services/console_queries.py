@@ -253,6 +253,44 @@ def fetch_prompt_generations(
     return rows, _count_value(total_rows)
 
 
+def fetch_prompt_generation_by_id(database_url: str, prompt_generation_id: str) -> dict[str, Any] | None:
+    rows = _fetch_all(
+        database_url,
+        """
+        SELECT
+            pg.id,
+            u.intake_note_id,
+            pg.status::text AS status,
+            pg.requires_review,
+            pg.prompt_type,
+            pg.selected_ruleset_id AS ruleset_id,
+            pg.selected_template_id AS template_id,
+            COALESCE(ld.destination::text, 'queue_only') AS destination,
+            COALESCE(ld.mode::text, 'queue') AS mode,
+            COALESCE(ld.priority::text, 'normal') AS priority,
+            COALESCE(pg.structured_output_json, '{}'::jsonb) AS structured_output_json,
+            COALESCE(pg.final_prompt_markdown, '') AS final_prompt_markdown,
+            '[]'::jsonb AS validation_warnings,
+            pg.created_at,
+            COALESCE(ld.created_at, pg.created_at) AS updated_at,
+            pg.project_id
+        FROM prompt_generations pg
+        JOIN utterances u ON u.id = pg.utterance_id
+        LEFT JOIN LATERAL (
+            SELECT d.*
+            FROM deliveries d
+            WHERE d.prompt_generation_id = pg.id
+            ORDER BY d.created_at DESC, d.id DESC
+            LIMIT 1
+        ) ld ON TRUE
+        WHERE pg.id = %s
+        LIMIT 1
+        """,
+        (prompt_generation_id,),
+    )
+    return rows[0] if rows else None
+
+
 def fetch_deliveries(
     database_url: str,
     *,
@@ -280,6 +318,7 @@ def fetch_deliveries(
             d.id,
             d.prompt_generation_id,
             d.delivery_target_id AS target_id,
+            d.session_identifier,
             d.status::text AS status,
             d.destination::text AS destination,
             d.mode::text AS mode,
@@ -293,11 +332,13 @@ def fetch_deliveries(
                       AND d2.created_at <= d.created_at
                       AND d2.status = 'failed'
                 )
-            ) AS retry_count,
+                ) AS retry_count,
+            COALESCE(d.dispatch_request_json, '{{}}'::jsonb) AS dispatch_request_json,
+            COALESCE(d.dispatch_response_json, '{{}}'::jsonb) AS dispatch_response_json,
             d.error_text AS failure_text,
             NULL::text AS ack_text,
             d.created_at,
-            COALESCE(d.acked_at, d.dispatched_at, d.created_at) AS updated_at
+            COALESCE(d.acked_at, d.dispatched_at, d.queued_at, d.created_at) AS updated_at
         FROM deliveries d
         {where_sql}
         ORDER BY d.created_at {order_sql}, d.id {order_sql}
@@ -544,6 +585,7 @@ def fetch_delivery_targets(
             id,
             name,
             target_type::text AS target_type,
+            target_identifier,
             COALESCE(config_json->>'destination', 'queue_only') AS destination,
             scope::text AS scope,
             project_id,
@@ -551,7 +593,25 @@ def fetch_delivery_targets(
             FALSE AS is_sensitive,
             NOT is_auto_dispatch_safe AS requires_confirmation,
             'prod'::text AS environment,
-            'ok'::text AS validation_status,
+            CASE
+                WHEN target_type IN ('claude_session', 'codex_session', 'chat_session') THEN 'unknown'
+                WHEN target_type = 'obsidian_note' THEN CASE
+                    WHEN COALESCE(config_json->>'target_folder', '') <> '' THEN 'ok'
+                    ELSE 'degraded'
+                END
+                WHEN target_type = 'generic_queue' THEN CASE
+                    WHEN COALESCE(config_json->>'queue_name', '') <> '' THEN 'ok'
+                    ELSE 'degraded'
+                END
+                ELSE 'error'
+            END AS validation_status,
+            CASE
+                WHEN target_type IN ('claude_session', 'codex_session', 'chat_session') THEN 'live_session_registry_unavailable'
+                WHEN target_type = 'obsidian_note' AND COALESCE(config_json->>'target_folder', '') = '' THEN 'target_folder_missing'
+                WHEN target_type = 'generic_queue' AND COALESCE(config_json->>'queue_name', '') = '' THEN 'queue_name_missing'
+                ELSE NULL
+            END AS validation_detail,
+            COALESCE(config_json, '{{}}'::jsonb) AS config_json,
             created_at AS updated_at
         FROM delivery_targets
         {where_sql}
@@ -561,6 +621,51 @@ def fetch_delivery_targets(
         (*params, limit, offset),
     )
     return rows, _count_value(total_rows)
+
+
+def fetch_delivery_target_by_id(database_url: str, target_id: str) -> dict[str, Any] | None:
+    rows = _fetch_all(
+        database_url,
+        """
+        SELECT
+            id,
+            name,
+            target_type::text AS target_type,
+            target_identifier,
+            COALESCE(config_json->>'destination', 'queue_only') AS destination,
+            scope::text AS scope,
+            project_id,
+            TRUE AS enabled,
+            FALSE AS is_sensitive,
+            NOT is_auto_dispatch_safe AS requires_confirmation,
+            'prod'::text AS environment,
+            CASE
+                WHEN target_type IN ('claude_session', 'codex_session', 'chat_session') THEN 'unknown'
+                WHEN target_type = 'obsidian_note' THEN CASE
+                    WHEN COALESCE(config_json->>'target_folder', '') <> '' THEN 'ok'
+                    ELSE 'degraded'
+                END
+                WHEN target_type = 'generic_queue' THEN CASE
+                    WHEN COALESCE(config_json->>'queue_name', '') <> '' THEN 'ok'
+                    ELSE 'degraded'
+                END
+                ELSE 'error'
+            END AS validation_status,
+            CASE
+                WHEN target_type IN ('claude_session', 'codex_session', 'chat_session') THEN 'live_session_registry_unavailable'
+                WHEN target_type = 'obsidian_note' AND COALESCE(config_json->>'target_folder', '') = '' THEN 'target_folder_missing'
+                WHEN target_type = 'generic_queue' AND COALESCE(config_json->>'queue_name', '') = '' THEN 'queue_name_missing'
+                ELSE NULL
+            END AS validation_detail,
+            COALESCE(config_json, '{}'::jsonb) AS config_json,
+            created_at AS updated_at
+        FROM delivery_targets
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (target_id,),
+    )
+    return rows[0] if rows else None
 
 
 def fetch_log_sources(
@@ -610,7 +715,7 @@ def fetch_log_sources(
                 d.error_text AS failure_text,
                 NULL::text AS ack_text,
                 d.created_at,
-                COALESCE(d.acked_at, d.dispatched_at, d.created_at) AS updated_at
+                COALESCE(d.acked_at, d.dispatched_at, d.queued_at, d.created_at) AS updated_at
             FROM deliveries d
             JOIN prompt_generations pg ON pg.id = d.prompt_generation_id
             JOIN utterances u ON u.id = pg.utterance_id
@@ -680,7 +785,7 @@ def fetch_log_sources(
             d.error_text AS failure_text,
             NULL::text AS ack_text,
             d.created_at,
-            COALESCE(d.acked_at, d.dispatched_at, d.created_at) AS updated_at
+            COALESCE(d.acked_at, d.dispatched_at, d.queued_at, d.created_at) AS updated_at
         FROM deliveries d
         ORDER BY d.created_at DESC, d.id DESC
         LIMIT 300

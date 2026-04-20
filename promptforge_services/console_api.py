@@ -27,6 +27,9 @@ from promptforge_services.console_models import (
     DeliveryDetailResponse,
     DeliveryListResponse,
     DeliveryRecord,
+    DeliveryTargetDispatchRequest,
+    DeliveryTargetDispatchResponse,
+    DeliveryTargetHealthResponse,
     DeliveryStatusRequest,
     DeliveryTargetDetailResponse,
     DeliveryTargetListResponse,
@@ -81,6 +84,7 @@ from promptforge_services.console_models import (
 )
 from promptforge_services.llm.config import LLMSettings
 from promptforge_services.llm.router import get_llm_router
+from promptforge_services.delivery_dispatch import DispatchOutcome, compute_target_health, dispatch_target_payload
 from promptforge_services.pipeline import llm_providers_health
 from promptforge_services.secrets import SecretsEncryptionError, encrypt_secret
 from promptforge_watcher.config import WatcherConfig
@@ -1144,11 +1148,14 @@ def _delivery_record(row: dict[str, Any]) -> DeliveryRecord:
         id=_as_str(row["id"]),
         prompt_generation_id=_as_str(row["prompt_generation_id"]),
         target_id=_as_optional_str(row.get("target_id")),
+        session_identifier=_as_optional_str(row.get("session_identifier")),
         status=row["status"],
         destination=row["destination"],
         mode=row["mode"],
         priority=row["priority"],
         retry_count=int(row.get("retry_count") or 0),
+        dispatch_request_json=row.get("dispatch_request_json") or {},
+        dispatch_response_json=row.get("dispatch_response_json") or {},
         failure_text=row.get("failure_text"),
         ack_text=row.get("ack_text"),
         created_at=_to_iso(row["created_at"]),
@@ -1229,6 +1236,7 @@ def _delivery_target_record(row: dict[str, Any]) -> DeliveryTargetRecord:
         id=_as_str(row["id"]),
         name=row["name"],
         target_type=row["target_type"],
+        target_identifier=row["target_identifier"],
         destination=row["destination"],
         scope=row["scope"],
         project_id=_as_optional_str(row.get("project_id")),
@@ -1237,6 +1245,7 @@ def _delivery_target_record(row: dict[str, Any]) -> DeliveryTargetRecord:
         requires_confirmation=bool(row["requires_confirmation"]),
         environment=row["environment"],
         validation_status=row["validation_status"],
+        validation_detail=row.get("validation_detail"),
         updated_at=_to_iso(row["updated_at"]),
     )
 
@@ -1308,6 +1317,292 @@ def _fetch_prompt_template_row(database_url: str, template_id: str) -> dict[str,
         (template_id,),
     )
     return rows[0] if rows else None
+
+
+def _fetch_delivery_target_row(database_url: str, target_id: str) -> dict[str, Any] | None:
+    return cq.fetch_delivery_target_by_id(database_url, target_id)
+
+
+def _fetch_prompt_generation_row(database_url: str, prompt_generation_id: str) -> dict[str, Any] | None:
+    return cq.fetch_prompt_generation_by_id(database_url, prompt_generation_id)
+
+
+def _fetch_delivery_row(database_url: str, delivery_id: str) -> dict[str, Any] | None:
+    rows = _fetch_all(
+        database_url,
+        """
+        SELECT
+            id,
+            prompt_generation_id,
+            delivery_target_id AS target_id,
+            session_identifier,
+            status::text AS status,
+            destination::text AS destination,
+            mode::text AS mode,
+            priority::text AS priority,
+            GREATEST(
+                0,
+                (
+                    SELECT COUNT(*)::int - 1
+                    FROM deliveries d2
+                    WHERE d2.prompt_generation_id = d.prompt_generation_id
+                      AND d2.created_at <= d.created_at
+                      AND d2.status = 'failed'
+                )
+            ) AS retry_count,
+            COALESCE(dispatch_request_json, '{}'::jsonb) AS dispatch_request_json,
+            COALESCE(dispatch_response_json, '{}'::jsonb) AS dispatch_response_json,
+            error_text AS failure_text,
+            NULL::text AS ack_text,
+            created_at,
+            COALESCE(acked_at, dispatched_at, queued_at, created_at) AS updated_at
+        FROM deliveries d
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (delivery_id,),
+    )
+    return rows[0] if rows else None
+
+
+def _delivery_dispatch_response(
+    *,
+    delivery_row: dict[str, Any],
+    target_row: dict[str, Any],
+    outcome: DispatchOutcome,
+    requested_at: str,
+) -> DeliveryTargetDispatchResponse:
+    return DeliveryTargetDispatchResponse(
+        deliveryId=_as_str(delivery_row["id"]),
+        targetId=_as_str(target_row["id"]),
+        targetType=target_row["target_type"],
+        accepted=outcome.accepted,
+        status=outcome.status,
+        machineStatus=outcome.response_summary.get("machine_status", outcome.status),
+        externalIdentifier=outcome.external_identifier,
+        sessionIdentifier=outcome.session_identifier,
+        promptGenerationId=_as_optional_str(delivery_row.get("prompt_generation_id")),
+        requestedAt=requested_at,
+        dispatchedAt=_to_iso(delivery_row.get("dispatched_at")) if delivery_row.get("dispatched_at") else None,
+        updatedAt=_to_iso(delivery_row.get("updated_at")),
+        retryCount=int(delivery_row.get("retry_count") or 0),
+        warnings=outcome.warnings,
+        errorText=outcome.error_text,
+        requestSummary=outcome.request_summary,
+        responseSummary=outcome.response_summary,
+    )
+
+
+def _delivery_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": _as_str(row["id"]),
+        "prompt_generation_id": _as_str(row["prompt_generation_id"]),
+        "target_id": _as_optional_str(row.get("target_id")),
+        "session_identifier": _as_optional_str(row.get("session_identifier")),
+        "status": row["status"],
+        "destination": row["destination"],
+        "mode": row["mode"],
+        "priority": row["priority"],
+        "retry_count": int(row.get("retry_count") or 0),
+        "dispatch_request_json": row.get("dispatch_request_json") or {},
+        "dispatch_response_json": row.get("dispatch_response_json") or {},
+        "failure_text": row.get("failure_text"),
+        "ack_text": row.get("ack_text"),
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "dispatched_at": row.get("dispatched_at"),
+    }
+
+
+def _create_delivery_attempt(
+    database_url: str,
+    *,
+    target_row: dict[str, Any],
+    prompt_generation_row: dict[str, Any] | None,
+    payload_content: str,
+    request: DeliveryTargetDispatchRequest,
+) -> dict[str, Any]:
+    destination = _as_str(
+        (prompt_generation_row or {}).get("destination")
+        or target_row.get("destination")
+        or "queue_only"
+    )
+    mode = request.mode.value if hasattr(request.mode, "value") else (request.mode or (prompt_generation_row or {}).get("mode") or "queue")
+    priority = request.priority.value if hasattr(request.priority, "value") else (request.priority or (prompt_generation_row or {}).get("priority") or "normal")
+    delivery_target_id = _as_optional_str(target_row.get("id"))
+    prompt_generation_id = _as_optional_str((prompt_generation_row or {}).get("id"))
+    request_json = {
+        "target_id": delivery_target_id,
+        "prompt_generation_id": prompt_generation_id,
+        "payload_content": payload_content[:1000],
+        "target_session_identifier": request.target_session_identifier,
+        "priority": priority,
+        "mode": mode,
+        "environment": request.environment,
+        "dry_run": request.dry_run,
+    }
+    inserted = _fetch_all(
+        database_url,
+        """
+        INSERT INTO deliveries (
+            prompt_generation_id,
+            delivery_target_id,
+            destination,
+            target_type,
+            target_identifier,
+            mode,
+            status,
+            priority,
+            queued_at,
+            session_identifier,
+            dispatch_request_json
+        ) VALUES (
+            %s,
+            %s,
+            %s::pf_destination,
+            %s::pf_target_type,
+            %s,
+            %s::pf_delivery_mode,
+            'dispatching'::pf_delivery_status,
+            %s::pf_priority,
+            now(),
+            %s,
+            %s::jsonb
+        )
+        RETURNING id
+        """,
+        (
+            prompt_generation_id,
+            delivery_target_id,
+            destination,
+            target_row["target_type"],
+            target_row["target_identifier"],
+            mode,
+            priority,
+            request.target_session_identifier,
+            json.dumps(request_json),
+        ),
+    )
+    if not inserted:
+        raise raise_503_db_unavailable()
+    delivery_row = _fetch_delivery_row(database_url, _as_str(inserted[0]["id"]))
+    if not delivery_row:
+        raise raise_503_db_unavailable()
+    return delivery_row
+
+
+def _update_delivery_attempt(
+    database_url: str,
+    *,
+    delivery_id: str,
+    status: str,
+    mode: str | None,
+    priority: str | None,
+    session_identifier: str | None,
+    request_json: dict[str, Any],
+    response_json: dict[str, Any],
+    error_text: str | None = None,
+) -> dict[str, Any]:
+    queued_clause = "queued_at = now()," if status == "queued" else ""
+    dispatched_clause = "dispatched_at = now()," if status in {"delivered", "acked", "failed"} else ""
+    rows = _fetch_all(
+        database_url,
+        f"""
+        UPDATE deliveries
+        SET status = %s::pf_delivery_status,
+            mode = COALESCE(%s::pf_delivery_mode, mode),
+            priority = COALESCE(%s::pf_priority, priority),
+            session_identifier = %s,
+            dispatch_request_json = %s::jsonb,
+            dispatch_response_json = %s::jsonb,
+            {queued_clause}
+            {dispatched_clause}
+            error_text = %s
+        WHERE id = %s
+        RETURNING
+            id,
+            prompt_generation_id,
+            delivery_target_id AS target_id,
+            session_identifier,
+            status::text AS status,
+            destination::text AS destination,
+            mode::text AS mode,
+            priority::text AS priority,
+            GREATEST(
+                0,
+                (
+                    SELECT COUNT(*)::int - 1
+                    FROM deliveries d2
+                    WHERE d2.prompt_generation_id = deliveries.prompt_generation_id
+                      AND d2.created_at <= deliveries.created_at
+                      AND d2.status = 'failed'
+                )
+            ) AS retry_count,
+            COALESCE(dispatch_request_json, '{{}}'::jsonb) AS dispatch_request_json,
+            COALESCE(dispatch_response_json, '{{}}'::jsonb) AS dispatch_response_json,
+            error_text AS failure_text,
+            NULL::text AS ack_text,
+            created_at,
+            COALESCE(dispatched_at, queued_at, created_at) AS updated_at,
+            dispatched_at
+        """,
+        (
+            status,
+            mode,
+            priority,
+            session_identifier,
+            json.dumps(request_json),
+            json.dumps(response_json),
+            error_text,
+            delivery_id,
+        ),
+    )
+    if not rows:
+        raise raise_404("delivery_not_found")
+    return _delivery_from_row(rows[0])
+
+
+def _dispatch_delivery_attempt(
+    database_url: str,
+    *,
+    delivery_row: dict[str, Any],
+    target_row: dict[str, Any],
+    request: DeliveryTargetDispatchRequest,
+    payload_content: str,
+    dry_run: bool,
+) -> DeliveryTargetDispatchResponse:
+    requested_at = datetime.now(timezone.utc).isoformat()
+    outcome = dispatch_target_payload(
+        target_row=target_row,
+        payload_content=payload_content,
+        prompt_generation_id=_as_optional_str(delivery_row.get("prompt_generation_id")),
+        delivery_id=_as_str(delivery_row["id"]),
+        target_session_identifier=request.target_session_identifier,
+        dry_run=dry_run,
+    )
+    if dry_run:
+        return _delivery_dispatch_response(
+            delivery_row=delivery_row,
+            target_row=target_row,
+            outcome=outcome,
+            requested_at=requested_at,
+        )
+
+    updated = _update_delivery_attempt(
+        database_url,
+        delivery_id=_as_str(delivery_row["id"]),
+        status=outcome.status,
+        session_identifier=outcome.session_identifier or request.target_session_identifier,
+        request_json=outcome.request_summary,
+        response_json=outcome.response_summary,
+        error_text=outcome.error_text,
+    )
+    return _delivery_dispatch_response(
+        delivery_row=updated,
+        target_row=target_row,
+        outcome=outcome,
+        requested_at=requested_at,
+    )
 
 
 def _normalized_json_mapping(name: str, value: Any) -> dict[str, Any]:
@@ -1679,6 +1974,153 @@ def _window_bounds(window_hours: int) -> tuple[datetime, datetime]:
     return window_end - timedelta(hours=window_hours), window_end
 
 
+def _dispatch_target_payload(
+    database_url: str,
+    *,
+    target_id: str,
+    payload: DeliveryTargetDispatchRequest,
+    delivery_id_override: str | None = None,
+) -> DeliveryTargetDispatchResponse:
+    vault_path = os.getenv("PROMPTFORGE_VAULT_PATH", "/vault")
+    target_row = _fetch_delivery_target_row(database_url, target_id)
+    if not target_row:
+        raise raise_404("target_not_found")
+
+    prompt_generation_row: dict[str, Any] | None = None
+    if payload.prompt_generation_id:
+        prompt_generation_row = _fetch_prompt_generation_row(database_url, payload.prompt_generation_id)
+        if not prompt_generation_row:
+            raise raise_404("prompt_generation_not_found")
+
+    delivery_row: dict[str, Any] | None = None
+    delivery_id = delivery_id_override or payload.delivery_id
+    if delivery_id_override and payload.delivery_id and payload.delivery_id != delivery_id_override:
+        raise raise_400("delivery_id_mismatch")
+    if delivery_id:
+        delivery_row = _fetch_delivery_row(database_url, delivery_id)
+        if not delivery_row:
+            raise raise_404("delivery_not_found")
+        if _as_optional_str(delivery_row.get("target_id")) != _as_str(target_row["id"]):
+            raise raise_400("delivery_target_mismatch")
+        if payload.prompt_generation_id and _as_optional_str(delivery_row.get("prompt_generation_id")) != payload.prompt_generation_id:
+            raise raise_400("delivery_prompt_generation_mismatch")
+        if prompt_generation_row is None and _as_optional_str(delivery_row.get("prompt_generation_id")):
+            prompt_generation_row = _fetch_prompt_generation_row(
+                database_url,
+                _as_str(delivery_row["prompt_generation_id"]),
+            )
+    elif not payload.dry_run:
+        prompt_generation_id = payload.prompt_generation_id or _as_optional_str((prompt_generation_row or {}).get("id"))
+        if not prompt_generation_id:
+            raise raise_400("prompt_generation_id_required")
+        payload_content = _dispatch_payload_content(payload, prompt_generation_row)
+        delivery_row = _create_delivery_attempt(
+            database_url,
+            target_row=target_row,
+            prompt_generation_row=prompt_generation_row,
+            payload_content=payload_content,
+            request=payload,
+        )
+    else:
+        prompt_generation_id = payload.prompt_generation_id or _as_optional_str((prompt_generation_row or {}).get("id"))
+        payload_content = _dispatch_payload_content(payload, prompt_generation_row)
+        synthetic_delivery_id = delivery_id or f"preview-{hashlib.sha1(f'{target_id}|{prompt_generation_id}|{payload_content}'.encode('utf-8')).hexdigest()[:16]}"
+        delivery_row = {
+            "id": synthetic_delivery_id,
+            "prompt_generation_id": prompt_generation_id or synthetic_delivery_id,
+            "target_id": target_row["id"],
+            "session_identifier": payload.target_session_identifier,
+            "status": "dispatching",
+            "destination": prompt_generation_row.get("destination") if prompt_generation_row else target_row.get("destination"),
+            "mode": payload.mode or (prompt_generation_row or {}).get("mode") or "queue",
+            "priority": payload.priority or (prompt_generation_row or {}).get("priority") or "normal",
+            "retry_count": 0,
+            "dispatch_request_json": {},
+            "dispatch_response_json": {},
+            "failure_text": None,
+            "ack_text": None,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+            "dispatched_at": None,
+        }
+
+    payload_content = _dispatch_payload_content(payload, prompt_generation_row)
+    if not payload_content:
+        raise raise_400("payload_content_required")
+    if payload.target_session_identifier and str(target_row["target_type"]) not in {"claude_session", "codex_session", "chat_session"}:
+        raise raise_400("target_session_identifier_not_allowed")
+
+    outcome = dispatch_target_payload(
+        target_row=target_row,
+        payload_content=payload_content,
+        prompt_generation_id=_as_optional_str((prompt_generation_row or {}).get("id")) or _as_optional_str(delivery_row.get("prompt_generation_id")),
+        delivery_id=_as_str(delivery_row["id"]),
+        target_session_identifier=payload.target_session_identifier,
+        dry_run=payload.dry_run,
+        vault_path=vault_path,
+    )
+    target_type = str(target_row["target_type"])
+    supported_types = {"obsidian_note", "generic_queue"}
+    unsupported = target_type not in supported_types
+    if payload.dry_run:
+        if unsupported:
+            raise HTTPException(status_code=501, detail=outcome.error_text or f"unsupported_target_type:{target_type}")
+        return _delivery_dispatch_response(
+            delivery_row=delivery_row,
+            target_row=target_row,
+            outcome=outcome,
+            requested_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    if unsupported:
+        updated = _update_delivery_attempt(
+            database_url,
+            delivery_id=_as_str(delivery_row["id"]),
+            status=outcome.status,
+            mode=_as_optional_str(payload.mode) if payload.mode is not None else None,
+            priority=_as_optional_str(payload.priority) if payload.priority is not None else None,
+            session_identifier=outcome.session_identifier or payload.target_session_identifier,
+            request_json=outcome.request_summary,
+            response_json=outcome.response_summary,
+            error_text=outcome.error_text,
+        )
+        raise HTTPException(
+            status_code=501,
+            detail=outcome.error_text or f"unsupported_target_type:{target_type}",
+        )
+
+    updated = _update_delivery_attempt(
+        database_url,
+        delivery_id=_as_str(delivery_row["id"]),
+        status=outcome.status,
+        mode=_as_optional_str(payload.mode) if payload.mode is not None else None,
+        priority=_as_optional_str(payload.priority) if payload.priority is not None else None,
+        session_identifier=outcome.session_identifier or payload.target_session_identifier,
+        request_json=outcome.request_summary,
+        response_json=outcome.response_summary,
+        error_text=outcome.error_text,
+    )
+    return _delivery_dispatch_response(
+        delivery_row=updated,
+        target_row=target_row,
+        outcome=outcome,
+        requested_at=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def _dispatch_payload_content(
+    payload: DeliveryTargetDispatchRequest,
+    prompt_generation_row: dict[str, Any] | None,
+) -> str:
+    if payload.payload_content and payload.payload_content.strip():
+        return payload.payload_content.strip()
+    if prompt_generation_row:
+        text = _as_optional_str(prompt_generation_row.get("final_prompt_markdown")) or ""
+        if text.strip():
+            return text.strip()
+    return ""
+
+
 
 @router.get("/projects", response_model=ProjectListResponse)
 def list_projects(limit: str | None = None, offset: str | None = None) -> ProjectListResponse:
@@ -1938,6 +2380,55 @@ def list_delivery_targets(
     return DeliveryTargetListResponse(
         pagination=_pagination_meta(total, limit_value, offset_value),
         delivery_targets=[_delivery_target_record(row) for row in rows],
+    )
+
+
+@router.get("/targets/{target_id}/health", response_model=DeliveryTargetHealthResponse)
+def get_delivery_target_health(target_id: str) -> DeliveryTargetHealthResponse:
+    database_url = _require_db_url()
+    row = _fetch_delivery_target_row(database_url, target_id)
+    if not row:
+        raise raise_404("target_not_found")
+    health = compute_target_health(row)
+    return DeliveryTargetHealthResponse(
+        targetId=_as_str(row["id"]),
+        targetType=row["target_type"],
+        healthStatus=health.status,
+        detail=health.detail,
+        attached=health.attached,
+        busy=health.busy,
+        reachable=health.reachable,
+        stale=health.stale,
+        updatedAt=_to_iso(row["updated_at"]),
+    )
+
+
+@router.post("/targets/{target_id}/dispatch", response_model=DeliveryTargetDispatchResponse)
+def dispatch_target(
+    target_id: str,
+    payload: DeliveryTargetDispatchRequest,
+) -> DeliveryTargetDispatchResponse:
+    database_url = _require_db_url()
+    return _dispatch_target_payload(database_url, target_id=target_id, payload=payload)
+
+
+@router.post("/deliveries/{delivery_id}/dispatch", response_model=DeliveryTargetDispatchResponse)
+def dispatch_delivery(
+    delivery_id: str,
+    payload: DeliveryTargetDispatchRequest,
+) -> DeliveryTargetDispatchResponse:
+    database_url = _require_db_url()
+    delivery_row = _fetch_delivery_row(database_url, delivery_id)
+    if not delivery_row:
+        raise raise_404("delivery_not_found")
+    target_id = _as_optional_str(delivery_row.get("target_id"))
+    if not target_id:
+        raise raise_404("target_not_found")
+    return _dispatch_target_payload(
+        database_url,
+        target_id=target_id,
+        payload=payload,
+        delivery_id_override=delivery_id,
     )
 
 

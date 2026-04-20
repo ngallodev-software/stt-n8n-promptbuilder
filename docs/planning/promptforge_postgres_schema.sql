@@ -462,6 +462,9 @@ CREATE TABLE IF NOT EXISTS deliveries (
     queued_at TIMESTAMPTZ NULL,
     dispatched_at TIMESTAMPTZ NULL,
     acked_at TIMESTAMPTZ NULL,
+    session_identifier TEXT NULL,
+    dispatch_request_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    dispatch_response_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     error_text TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT chk_deliveries_target_identifier_nonempty CHECK (length(trim(target_identifier)) > 0)

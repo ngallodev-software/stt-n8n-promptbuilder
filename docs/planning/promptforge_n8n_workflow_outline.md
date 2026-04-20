@@ -336,6 +336,12 @@ Possible adapters:
 - chat session adapter
 - generic queue adapter
 
+Backend status:
+
+- `generic_queue` is implemented as queue-backed delivery state
+- `obsidian_note` is implemented as file write-back
+- live `claude_session`, `codex_session`, and `chat_session` targets are explicitly unsupported in the Python backend until a real session transport exists
+
 ### Stage B4: dispatch
 
 #### On success

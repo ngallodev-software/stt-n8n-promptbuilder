@@ -30,6 +30,9 @@ echo "Synchronizing Postgres role password with compose config..."
 echo "Applying Postgres schema if needed..."
 "$ROOT_DIR/scripts/migrate_postgres.sh"
 
+echo "Applying delivery dispatch migration if needed..."
+"$ROOT_DIR/scripts/migrate_postgres.sh" "$ROOT_DIR/docs/planning/promptforge_delivery_dispatch_migration.sql"
+
 echo "Seeding operator catalogs if the database is still empty..."
 catalog_counts="$(
   docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -v ON_ERROR_STOP=1 <<'SQL'
