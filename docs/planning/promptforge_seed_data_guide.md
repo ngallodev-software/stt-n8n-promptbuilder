@@ -109,6 +109,8 @@ For MVP, they provide:
 - something for selection logic to load
 - a clear path for later engine implementation
 
+The console backend now also exposes durable create/edit endpoints for these records and a ruleset dry-run preview so the frontend can exercise the stored config without a local mock.
+
 ---
 
 ## Seeded term dictionary entries

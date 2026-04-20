@@ -105,6 +105,57 @@ class RulePatchRequest(StrictBaseModel):
     priority: int | None = None
 
 
+class RuleCreateRequest(StrictBaseModel):
+    ruleset_id: str = Field(alias="rulesetId")
+    rule_type: RuleType = Field(alias="ruleType")
+    priority: int = 100
+    enabled: bool = True
+    match_conditions_json: dict[str, Any] = Field(default_factory=dict, alias="matchConditionsJson")
+    action_json: dict[str, Any] = Field(default_factory=dict, alias="actionJson")
+    notes: str | None = None
+
+
+class RuleDryRunRequest(StrictBaseModel):
+    sample_text: str = Field(alias="sampleText")
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class RuleDryRunDiagnostic(StrictBaseModel):
+    rule_id: str = Field(alias="ruleId")
+    ruleset_id: str = Field(alias="rulesetId")
+    name: str
+    rule_type: RuleType = Field(alias="ruleType")
+    priority: int
+    enabled: bool
+    matched: bool
+    applied: bool
+    skipped_reason: str | None = Field(default=None, alias="skippedReason")
+    warnings: list[str] = Field(default_factory=list)
+    input_text: str = Field(alias="inputText")
+    output_text: str = Field(alias="outputText")
+    effect_summary: dict[str, Any] = Field(default_factory=dict, alias="effectSummary")
+
+
+class RuleDryRunSummary(StrictBaseModel):
+    ruleset_id: str = Field(alias="rulesetId")
+    total_rules: int = Field(alias="totalRules")
+    matched_rules: int = Field(alias="matchedRules")
+    applied_rules: int = Field(alias="appliedRules")
+    skipped_rules: int = Field(alias="skippedRules")
+    failed_rules: int = Field(alias="failedRules")
+    warnings: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RuleDryRunResponse(StrictBaseModel):
+    original_input: str = Field(alias="originalInput")
+    transformed_output: str = Field(alias="transformedOutput")
+    matched_rules: list[RuleDryRunDiagnostic] = Field(alias="matchedRules")
+    skipped_rules: list[RuleDryRunDiagnostic] = Field(alias="skippedRules")
+    failed_rules: list[RuleDryRunDiagnostic] = Field(alias="failedRules")
+    summary: RuleDryRunSummary
+
+
 class DictionaryUpsertRequest(StrictBaseModel):
     id: str | None = None
     scope: Scope | None = None
@@ -123,6 +174,40 @@ class DictionaryUpsertRequest(StrictBaseModel):
 
 class TemplateActivateRequest(StrictBaseModel):
     family: str
+
+
+class PromptTemplateCreateRequest(StrictBaseModel):
+    name: str
+    prompt_type: str = Field(alias="promptType")
+    scope: Scope = Scope.GLOBAL
+    project_id: str | None = Field(default=None, alias="projectId")
+    version: int = 1
+    template_family_key: str = Field(alias="templateFamilyKey")
+    body: str
+    is_active: bool = Field(default=False, alias="isActive")
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def _validate_scope(cls, value: Any) -> Scope:
+        return _coerce_enum(Scope, value)
+
+
+class PromptTemplatePatchRequest(StrictBaseModel):
+    name: str | None = None
+    prompt_type: str | None = Field(default=None, alias="promptType")
+    scope: Scope | None = None
+    project_id: str | None = Field(default=None, alias="projectId")
+    version: int | None = None
+    template_family_key: str | None = Field(default=None, alias="templateFamilyKey")
+    body: str | None = None
+    is_active: bool | None = Field(default=None, alias="isActive")
+
+    @field_validator("scope", mode="before")
+    @classmethod
+    def _validate_scope(cls, value: Any) -> Scope | None:
+        if value is None:
+            return None
+        return _coerce_enum(Scope, value)
 
 
 class PromptPriorityRequest(StrictBaseModel):

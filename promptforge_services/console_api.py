@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, TypeVar
 from urllib.parse import urlsplit
@@ -51,9 +52,16 @@ from promptforge_services.console_models import (
     PromptDetailResponse,
     PromptGenerationRecord,
     PromptListResponse,
+    PromptTemplateCreateRequest,
     PromptTemplateDetailResponse,
+    PromptTemplatePatchRequest,
     PromptTemplateListResponse,
     PromptTemplateRecord,
+    RuleCreateRequest,
+    RuleDryRunDiagnostic,
+    RuleDryRunRequest,
+    RuleDryRunResponse,
+    RuleDryRunSummary,
     QueueDepthResponse,
     RuleDetailResponse,
     RuleListResponse,
@@ -1233,6 +1241,378 @@ def _delivery_target_record(row: dict[str, Any]) -> DeliveryTargetRecord:
     )
 
 
+def _fetch_ruleset_row(database_url: str, ruleset_id: str) -> dict[str, Any] | None:
+    rows = _fetch_all(
+        database_url,
+        """
+        SELECT
+            id,
+            name,
+            scope::text AS scope,
+            project_id,
+            is_active AS active,
+            description,
+            created_at AS updated_at
+        FROM rulesets
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (ruleset_id,),
+    )
+    return rows[0] if rows else None
+
+
+def _fetch_rule_row(database_url: str, rule_id: str) -> dict[str, Any] | None:
+    rows = _fetch_all(
+        database_url,
+        """
+        SELECT
+            id,
+            ruleset_id,
+            COALESCE(notes, rule_type::text || ' rule') AS name,
+            rule_type::text AS rule_type,
+            priority,
+            enabled,
+            COALESCE(match_conditions_json::text, '') AS pattern,
+            COALESCE(action_json::text, '') AS replacement,
+            notes AS description,
+            created_at AS updated_at
+        FROM rules
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (rule_id,),
+    )
+    return rows[0] if rows else None
+
+
+def _fetch_prompt_template_row(database_url: str, template_id: str) -> dict[str, Any] | None:
+    rows = _fetch_all(
+        database_url,
+        """
+        SELECT
+            id,
+            name,
+            prompt_type,
+            scope::text AS scope,
+            project_id,
+            version,
+            is_active,
+            output_contract_name AS template_family_key,
+            body_template AS body,
+            created_at AS updated_at
+        FROM prompt_templates
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (template_id,),
+    )
+    return rows[0] if rows else None
+
+
+def _normalized_json_mapping(name: str, value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise raise_400(f"invalid_{name}")
+    return value
+
+
+def _is_empty_context_value(value: Any) -> bool:
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _apply_rule_actions(sample_text: str, action_json: dict[str, Any]) -> tuple[str, dict[str, Any], list[str]]:
+    output = sample_text
+    warnings: list[str] = []
+    applied_actions: list[str] = []
+    metadata_changes: dict[str, Any] = {}
+
+    def _mark_action(name: str, changed: bool) -> None:
+        applied_actions.append(name)
+        if changed:
+            metadata_changes.setdefault("text_actions", []).append(name)
+
+    if action_json.get("remove_leading_fillers"):
+        new_output = re.sub(
+            r"^(?:\s*(?:um|uh|erm|like|so|well|okay|you know)\b[\s,.\-]*)+",
+            "",
+            output,
+            flags=re.IGNORECASE,
+        )
+        _mark_action("remove_leading_fillers", new_output != output)
+        output = new_output
+
+    if action_json.get("collapse_spaces"):
+        new_output = re.sub(r"[ \t]+", " ", output)
+        new_output = re.sub(r"\n[ \t]+", "\n", new_output)
+        new_output = re.sub(r"[ \t]+\n", "\n", new_output)
+        new_output = new_output.strip()
+        _mark_action("collapse_spaces", new_output != output)
+        output = new_output
+
+    if action_json.get("normalize_punctuation"):
+        new_output = re.sub(r"\s+([,.;:!?])", r"\1", output)
+        new_output = re.sub(r"([,.;:!?])([^\s\n])", r"\1 \2", new_output)
+        new_output = re.sub(r"\s+", " ", new_output).strip()
+        _mark_action("normalize_punctuation", new_output != output)
+        output = new_output
+
+    if action_json.get("markdown_normalize"):
+        new_output = re.sub(r"\r\n?", "\n", output)
+        new_output = re.sub(r"[ \t]+\n", "\n", new_output)
+        new_output = re.sub(r"\n{3,}", "\n\n", new_output)
+        _mark_action("markdown_normalize", new_output != output)
+        output = new_output
+
+    if action_json.get("trim_trailing_whitespace"):
+        new_output = re.sub(r"[ \t]+$", "", output, flags=re.MULTILINE)
+        _mark_action("trim_trailing_whitespace", new_output != output)
+        output = new_output
+
+    replace_terms = action_json.get("replace_terms")
+    if isinstance(replace_terms, dict):
+        replacements = sorted(replace_terms.items(), key=lambda item: len(str(item[0])), reverse=True)
+        new_output = output
+        for source, target in replacements:
+            if not isinstance(source, str) or not isinstance(target, str):
+                warnings.append("invalid_replace_terms_entry")
+                continue
+            new_output = re.sub(re.escape(source), target, new_output, flags=re.IGNORECASE)
+        _mark_action("replace_terms", new_output != output)
+        output = new_output
+    elif replace_terms is not None:
+        warnings.append("unsupported_action:replace_terms")
+
+    for key in ("default_destination", "default_target_type", "default_target_identifier", "default_mode"):
+        if key in action_json:
+            metadata_changes[key] = action_json[key]
+            applied_actions.append(key)
+
+    preserve_terms = action_json.get("preserve_terms")
+    if preserve_terms is not None:
+        if isinstance(preserve_terms, list):
+            metadata_changes["preserve_terms"] = preserve_terms
+            applied_actions.append("preserve_terms")
+        else:
+            warnings.append("unsupported_action:preserve_terms")
+
+    for key in sorted(set(action_json) - {"remove_leading_fillers", "collapse_spaces", "normalize_punctuation", "markdown_normalize", "trim_trailing_whitespace", "replace_terms", "default_destination", "default_target_type", "default_target_identifier", "default_mode", "preserve_terms"}):
+        warnings.append(f"unsupported_action:{key}")
+
+    effect_summary = {
+        "text_changed": output != sample_text,
+        "applied_actions": applied_actions,
+        "metadata_changes": metadata_changes,
+    }
+    return output, effect_summary, warnings
+
+
+def _rule_matches_dry_run(
+    row: dict[str, Any],
+    *,
+    sample_text: str,
+    context: dict[str, Any],
+) -> tuple[bool, str | None, list[str]]:
+    conditions = row.get("pattern")
+    if isinstance(conditions, str) and conditions:
+        try:
+            conditions_json = json.loads(conditions)
+        except json.JSONDecodeError:
+            return False, "invalid_conditions_json", ["invalid_conditions_json"]
+    elif isinstance(conditions, dict):
+        conditions_json = conditions
+    else:
+        conditions_json = {}
+
+    warnings: list[str] = []
+    for key, value in conditions_json.items():
+        if key in {"stage", "project_slug", "prompt_type", "destination", "target_identifier", "mode", "priority", "applies_to"}:
+            ctx_value = context.get(key)
+            if _is_empty_context_value(ctx_value):
+                warnings.append(f"unverified_condition:{key}")
+                continue
+            if str(ctx_value) != str(value):
+                return False, f"condition_mismatch:{key}", warnings
+            continue
+
+        if key == "field":
+            field_name = str(value).strip()
+            if not field_name:
+                warnings.append("invalid_condition:field")
+                continue
+            if bool(conditions_json.get("when_missing")):
+                if not _is_empty_context_value(context.get(field_name)):
+                    return False, f"condition_mismatch:{field_name}_present", warnings
+                continue
+            expected = conditions_json.get("value")
+            if expected is None:
+                warnings.append("unsupported_condition:field_value_missing")
+                continue
+            ctx_value = context.get(field_name)
+            if _is_empty_context_value(ctx_value):
+                warnings.append(f"unverified_condition:{field_name}")
+                continue
+            if str(ctx_value) != str(expected):
+                return False, f"condition_mismatch:{field_name}", warnings
+            continue
+
+        if key == "contains":
+            patterns = value if isinstance(value, list) else [value]
+            for pattern in patterns:
+                if not isinstance(pattern, str):
+                    warnings.append("invalid_condition:contains")
+                    continue
+                if pattern not in sample_text:
+                    return False, "condition_mismatch:contains", warnings
+            continue
+
+        if key == "not_contains":
+            patterns = value if isinstance(value, list) else [value]
+            for pattern in patterns:
+                if not isinstance(pattern, str):
+                    warnings.append("invalid_condition:not_contains")
+                    continue
+                if pattern in sample_text:
+                    return False, "condition_mismatch:not_contains", warnings
+            continue
+
+        if key == "regex":
+            if not isinstance(value, str) or not value.strip():
+                warnings.append("invalid_condition:regex")
+                continue
+            try:
+                if not re.search(value, sample_text, flags=re.IGNORECASE | re.MULTILINE):
+                    return False, "condition_mismatch:regex", warnings
+            except re.error:
+                return False, "invalid_condition:regex", warnings + ["invalid_condition:regex"]
+            continue
+
+        if key in {"when_missing", "value"}:
+            continue
+
+        warnings.append(f"unsupported_condition:{key}")
+
+    return True, None, warnings
+
+
+def _rule_dry_run_payload(
+    *,
+    database_url: str,
+    ruleset_id: str,
+    request: RuleDryRunRequest,
+) -> RuleDryRunResponse:
+    ruleset_row = _fetch_ruleset_row(database_url, ruleset_id)
+    if not ruleset_row:
+        raise raise_404("ruleset_not_found")
+
+    rows, _ = cq.fetch_rules(database_url, ruleset_id=ruleset_id, limit=5000, offset=0)
+    current_output = request.sample_text
+    matched: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    failed: list[dict[str, Any]] = []
+    warnings: set[str] = set()
+    metadata: dict[str, Any] = {
+        "ruleset_id": _as_str(ruleset_row["id"]),
+        "ruleset_name": ruleset_row["name"],
+        "scope": ruleset_row["scope"],
+        "project_id": _as_optional_str(ruleset_row.get("project_id")),
+        "input_length": len(request.sample_text),
+    }
+
+    for row in rows:
+        diagnostic_base = {
+            "rule_id": _as_str(row["id"]),
+            "ruleset_id": _as_str(row["ruleset_id"]),
+            "name": row["name"],
+            "rule_type": row["rule_type"],
+            "priority": int(row["priority"]),
+            "enabled": bool(row["enabled"]),
+            "input_text": current_output,
+            "output_text": current_output,
+            "matched": False,
+            "applied": False,
+            "skipped_reason": None,
+            "warnings": [],
+            "effect_summary": {},
+        }
+
+        if not bool(row["enabled"]):
+            diagnostic_base["skipped_reason"] = "disabled"
+            skipped.append(diagnostic_base)
+            continue
+
+        try:
+            matched_rule, skipped_reason, rule_warnings = _rule_matches_dry_run(
+                row,
+                sample_text=current_output,
+                context=request.context,
+            )
+            diagnostic_base["warnings"] = rule_warnings
+            warnings.update(rule_warnings)
+            if not matched_rule:
+                diagnostic_base["skipped_reason"] = skipped_reason or "not_matched"
+                skipped.append(diagnostic_base)
+                continue
+
+            action_json = row.get("replacement")
+            if isinstance(action_json, str) and action_json:
+                try:
+                    action_json_value = json.loads(action_json)
+                except json.JSONDecodeError:
+                    raise ValueError("invalid_action_json")
+            elif isinstance(action_json, dict):
+                action_json_value = action_json
+            else:
+                action_json_value = {}
+
+            next_output, effect_summary, action_warnings = _apply_rule_actions(current_output, action_json_value)
+            if action_warnings:
+                diagnostic_base["warnings"] = list(dict.fromkeys([*diagnostic_base["warnings"], *action_warnings]))
+                warnings.update(action_warnings)
+            if effect_summary.get("metadata_changes"):
+                metadata.update(effect_summary["metadata_changes"])
+            diagnostic_base["matched"] = True
+            diagnostic_base["applied"] = bool(effect_summary.get("text_changed")) or bool(effect_summary.get("metadata_changes"))
+            diagnostic_base["output_text"] = next_output
+            diagnostic_base["effect_summary"] = effect_summary
+            current_output = next_output
+            matched.append(diagnostic_base)
+        except Exception as exc:  # pragma: no cover - defensive path for malformed stored JSON
+            diagnostic_base["skipped_reason"] = "failed"
+            diagnostic_base["warnings"] = [str(exc)]
+            failed.append(diagnostic_base)
+            warnings.add(str(exc))
+
+    summary = RuleDryRunSummary(
+        ruleset_id=_as_str(ruleset_row["id"]),
+        total_rules=len(rows),
+        matched_rules=len(matched),
+        applied_rules=sum(1 for item in matched if item["applied"]),
+        skipped_rules=len(skipped),
+        failed_rules=len(failed),
+        warnings=sorted(warnings),
+        metadata=metadata,
+    )
+    return RuleDryRunResponse(
+        original_input=request.sample_text,
+        transformed_output=current_output,
+        matched_rules=[
+            RuleDryRunDiagnostic.model_validate(item)
+            for item in matched
+        ],
+        skipped_rules=[
+            RuleDryRunDiagnostic.model_validate(item)
+            for item in skipped
+        ],
+        failed_rules=[
+            RuleDryRunDiagnostic.model_validate(item)
+            for item in failed
+        ],
+        summary=summary,
+    )
+
+
 def _log_record(row: dict[str, Any]) -> LogRecord:
     return LogRecord(
         id=_as_str(row["id"]),
@@ -1847,6 +2227,71 @@ def patch_rule(rule_id: str, payload: RulePatchRequest) -> dict[str, Any]:
     return {"ok": True}
 
 
+@router.post("/rules", response_model=RuleDetailResponse)
+def create_rule(payload: RuleCreateRequest) -> RuleDetailResponse:
+    database_url = _require_db_url()
+    if not _fetch_ruleset_row(database_url, payload.ruleset_id):
+        raise raise_404("ruleset_not_found")
+    match_conditions_json = _normalized_json_mapping("match_conditions_json", payload.match_conditions_json)
+    action_json = _normalized_json_mapping("action_json", payload.action_json)
+    try:
+        rows = _fetch_all(
+            database_url,
+            """
+            INSERT INTO rules (
+                ruleset_id,
+                rule_type,
+                priority,
+                enabled,
+                match_conditions_json,
+                action_json,
+                notes
+            ) VALUES (
+                %s,
+                %s::pf_rule_type,
+                %s,
+                %s,
+                %s::jsonb,
+                %s::jsonb,
+                %s
+            )
+            RETURNING
+                id,
+                ruleset_id,
+                COALESCE(notes, rule_type::text || ' rule') AS name,
+                rule_type::text AS rule_type,
+                priority,
+                enabled,
+                COALESCE(match_conditions_json::text, '') AS pattern,
+                COALESCE(action_json::text, '') AS replacement,
+                notes AS description,
+                created_at AS updated_at
+            """,
+            (
+                payload.ruleset_id,
+                payload.rule_type,
+                payload.priority,
+                payload.enabled,
+                json.dumps(match_conditions_json),
+                json.dumps(action_json),
+                payload.notes,
+            ),
+        )
+    except psycopg.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="rule_conflict") from exc
+    if not rows:
+        raise raise_404("rule_not_found")
+    row = dict(rows[0])
+    row["updated_at"] = datetime.now(timezone.utc)
+    return RuleDetailResponse(rule=_rule_record(row))
+
+
+@router.post("/rulesets/{ruleset_id}/dry-run", response_model=RuleDryRunResponse)
+def dry_run_ruleset(ruleset_id: str, payload: RuleDryRunRequest) -> RuleDryRunResponse:
+    database_url = _require_db_url()
+    return _rule_dry_run_payload(database_url=database_url, ruleset_id=ruleset_id, request=payload)
+
+
 @router.post("/dictionary/upsert")
 def upsert_dictionary(payload: DictionaryUpsertRequest) -> dict[str, Any]:
     database_url = _require_db_url()
@@ -1884,6 +2329,171 @@ def upsert_dictionary(payload: DictionaryUpsertRequest) -> dict[str, Any]:
     out = payload.model_dump(mode="json")
     out["id"] = inserted[0]["id"] if inserted else None
     return {"ok": True, "payload": out}
+
+
+@router.post("/templates", response_model=PromptTemplateDetailResponse)
+def create_prompt_template(payload: PromptTemplateCreateRequest) -> PromptTemplateDetailResponse:
+    database_url = _require_db_url()
+    scope_value, project_id = _normalize_scope(payload.scope, payload.project_id)
+    _validate_project_scope(database_url, scope_value, project_id)
+    name = _coerce_non_empty_string("name", payload.name, maximum=512)
+    prompt_type = _coerce_non_empty_string("prompt_type", payload.prompt_type, maximum=256)
+    template_family_key = _coerce_non_empty_string("template_family_key", payload.template_family_key, maximum=512)
+    body = _coerce_non_empty_string("body", payload.body, maximum=100000)
+    if payload.version < 1:
+        raise raise_400("invalid_version")
+    try:
+        with psycopg.connect(database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO prompt_templates (
+                        name,
+                        scope,
+                        project_id,
+                        prompt_type,
+                        version,
+                        body_template,
+                        output_contract_name,
+                        is_active
+                    ) VALUES (
+                        %s,
+                        %s::pf_scope,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s
+                    )
+                    RETURNING
+                        id,
+                        name,
+                        prompt_type,
+                        scope::text AS scope,
+                        project_id,
+                        version,
+                        is_active,
+                        output_contract_name AS template_family_key,
+                        body_template AS body,
+                        created_at AS updated_at
+                    """,
+                    (
+                        name,
+                        scope_value,
+                        project_id,
+                        prompt_type,
+                        payload.version,
+                        body,
+                        template_family_key,
+                        payload.is_active,
+                    ),
+                )
+                row = cur.fetchone()
+                if payload.is_active:
+                    cur.execute(
+                        """
+                        UPDATE prompt_templates
+                        SET is_active = FALSE
+                        WHERE output_contract_name = %s
+                          AND id <> %s
+                        """,
+                        (template_family_key, row["id"]),
+                    )
+            conn.commit()
+    except psycopg.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="template_conflict") from exc
+    if not row:
+        raise raise_404("template_not_found")
+    row = dict(row)
+    row["updated_at"] = datetime.now(timezone.utc)
+    return PromptTemplateDetailResponse(prompt_template=_prompt_template_record(row))
+
+
+@router.patch("/templates/{template_id}", response_model=PromptTemplateDetailResponse)
+def patch_prompt_template(template_id: str, payload: PromptTemplatePatchRequest) -> PromptTemplateDetailResponse:
+    database_url = _require_db_url()
+    current = _fetch_prompt_template_row(database_url, template_id)
+    if not current:
+        raise raise_404("template_not_found")
+    scope_value = payload.scope or Scope(current["scope"])
+    project_id = payload.project_id if payload.project_id is not None else _as_optional_str(current.get("project_id"))
+    _normalize_scope(scope_value, project_id)
+    _validate_project_scope(database_url, scope_value.value, project_id)
+    name = _coerce_non_empty_string("name", payload.name if payload.name is not None else current["name"], maximum=512)
+    prompt_type = _coerce_non_empty_string(
+        "prompt_type",
+        payload.prompt_type if payload.prompt_type is not None else current["prompt_type"],
+        maximum=256,
+    )
+    template_family_key = _coerce_non_empty_string(
+        "template_family_key",
+        payload.template_family_key if payload.template_family_key is not None else current["template_family_key"],
+        maximum=512,
+    )
+    body = _coerce_non_empty_string("body", payload.body if payload.body is not None else current["body"], maximum=100000)
+    version = payload.version if payload.version is not None else int(current["version"])
+    if version < 1:
+        raise raise_400("invalid_version")
+    is_active = payload.is_active if payload.is_active is not None else bool(current["is_active"])
+    try:
+        with psycopg.connect(database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE prompt_templates
+                    SET name = %s,
+                        scope = %s::pf_scope,
+                        project_id = %s,
+                        prompt_type = %s,
+                        version = %s,
+                        body_template = %s,
+                        output_contract_name = %s,
+                        is_active = %s
+                    WHERE id = %s
+                    RETURNING
+                        id,
+                        name,
+                        prompt_type,
+                        scope::text AS scope,
+                        project_id,
+                        version,
+                        is_active,
+                        output_contract_name AS template_family_key,
+                        body_template AS body,
+                        created_at AS updated_at
+                    """,
+                    (
+                        name,
+                        scope_value.value,
+                        project_id,
+                        prompt_type,
+                        version,
+                        body,
+                        template_family_key,
+                        is_active,
+                        template_id,
+                    ),
+                )
+                row = cur.fetchone()
+                if is_active:
+                    cur.execute(
+                        """
+                        UPDATE prompt_templates
+                        SET is_active = FALSE
+                        WHERE output_contract_name = %s
+                          AND id <> %s
+                        """,
+                        (template_family_key, template_id),
+                    )
+            conn.commit()
+    except psycopg.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="template_conflict") from exc
+    if not row:
+        raise raise_404("template_not_found")
+    row = dict(row)
+    row["updated_at"] = datetime.now(timezone.utc)
+    return PromptTemplateDetailResponse(prompt_template=_prompt_template_record(row))
 
 
 @router.post("/templates/{template_id}/activate")

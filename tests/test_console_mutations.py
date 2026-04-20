@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 import pytest
+import psycopg
 from fastapi.testclient import TestClient
 
 from promptforge_services.console_api import router
@@ -123,6 +124,51 @@ def test_rule_patch_bad_payload(client: TestClient) -> None:
     assert response.status_code == 422
 
 
+def test_rule_create_and_dry_run_persists_and_transforms(
+    client: TestClient,
+    seeded_console_database_url: str,
+) -> None:
+    """POST /rules and POST /rulesets/{id}/dry-run - happy path."""
+    ruleset_id = "44444444-4444-4444-8444-444444444444"
+    payload = {
+        "rulesetId": ruleset_id,
+        "ruleType": "formatting",
+        "priority": 5,
+        "enabled": True,
+        "matchConditionsJson": {"contains": "hello"},
+        "actionJson": {"replace_terms": {"hello": "hi"}},
+        "notes": "test-rule-create",
+    }
+    created_rule_id: str | None = None
+    try:
+        response = client.post("/console/rules", json=payload)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["rule"]["ruleset_id"] == ruleset_id
+        assert body["rule"]["rule_type"] == "formatting"
+        created_rule_id = body["rule"]["id"]
+
+        dry_run_response = client.post(
+            f"/console/rulesets/{ruleset_id}/dry-run",
+            json={
+                "sampleText": "um hello   world!!",
+                "context": {},
+            },
+        )
+        assert dry_run_response.status_code == 200
+        dry_run = dry_run_response.json()
+        assert dry_run["summary"]["totalRules"] == 4
+        assert dry_run["summary"]["matchedRules"] == 4
+        assert dry_run["summary"]["failedRules"] == 0
+        assert dry_run["transformedOutput"].startswith("hi world")
+        assert all(rule["matched"] for rule in dry_run["matchedRules"])
+        assert dry_run["summary"]["metadata"]["ruleset_id"] == ruleset_id
+    finally:
+        if created_rule_id:
+            with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
+                conn.execute("DELETE FROM rules WHERE id = %s", (created_rule_id,))
+
+
 # ============================================================================
 # Dictionary mutations
 # ============================================================================
@@ -188,6 +234,62 @@ def test_template_activate_not_found(client: TestClient) -> None:
     payload = {"family": "test-family"}
     response = client.post("/templates/nonexistent-id/activate", json=payload)
     assert response.status_code == 404
+
+
+def test_template_create_and_patch_persists_changes(
+    client: TestClient,
+    seeded_console_database_url: str,
+) -> None:
+    """POST /templates and PATCH /templates/{id} - happy path."""
+    payload = {
+        "name": "test-template-create",
+        "promptType": "planning",
+        "scope": "global",
+        "templateFamilyKey": "test-template-family",
+        "body": "Initial body for {{ project_slug }}",
+        "version": 2,
+        "isActive": False,
+    }
+    template_id: str | None = None
+    try:
+        response = client.post("/console/templates", json=payload)
+        assert response.status_code == 200
+        created = response.json()["prompt_template"]
+        assert created["name"] == "test-template-create"
+        assert created["template_family_key"] == "test-template-family"
+        template_id = created["id"]
+
+        patch_response = client.patch(
+            f"/console/templates/{template_id}",
+            json={
+                "body": "Updated body for {{ project_slug }}",
+                "version": 3,
+                "isActive": True,
+            },
+        )
+        assert patch_response.status_code == 200
+        patched = patch_response.json()["prompt_template"]
+        assert patched["body"] == "Updated body for {{ project_slug }}"
+        assert patched["version"] == 3
+        assert patched["is_active"] is True
+
+        with psycopg.connect(seeded_console_database_url, row_factory=psycopg.rows.dict_row) as conn:
+            row = conn.execute(
+                """
+                SELECT id, body_template, version, is_active
+                FROM prompt_templates
+                WHERE id = %s
+                """,
+                (template_id,),
+            ).fetchone()
+        assert row is not None
+        assert row["body_template"] == "Updated body for {{ project_slug }}"
+        assert int(row["version"]) == 3
+        assert bool(row["is_active"]) is True
+    finally:
+        if template_id:
+            with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
+                conn.execute("DELETE FROM prompt_templates WHERE id = %s", (template_id,))
 
 
 # ============================================================================
