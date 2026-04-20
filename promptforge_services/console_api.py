@@ -101,6 +101,7 @@ VALID_LOG_LEVELS = {"debug", "info", "warn", "error"}
 VALID_TARGET_TYPES = {"none", "chat_session", "claude_session", "codex_session", "obsidian_note", "generic_queue"}
 VALID_PRIORITY_VALUES = {"low", "normal", "high", "urgent"}
 VALID_DESTINATIONS = {"chat", "cli", "obsidian_note", "queue_only"}
+TERMINAL_DELIVERY_STATUSES = {"delivered", "acked", "failed"}
 DEFAULT_WINDOW_HOURS = 24
 DEFAULT_SLA_TARGET_SECONDS = 3600
 RUNTIME_SETTING_KEYS = (
@@ -159,6 +160,31 @@ def raise_503_db_unavailable() -> HTTPException:
 
 def raise_503_secrets_unavailable(detail: str = "secrets_encryption_unconfigured") -> HTTPException:
     return HTTPException(status_code=503, detail=detail)
+
+
+def raise_unsupported(
+    code: str,
+    message: str,
+    *,
+    endpoint: str,
+    capability: str | None = None,
+    machine_status: str = "unsupported",
+    retryable: bool = False,
+    details: dict[str, Any] | None = None,
+) -> HTTPException:
+    detail = {
+        "code": code,
+        "message": message,
+        "status": "unsupported",
+        "machine_status": machine_status,
+        "retryable": retryable,
+        "endpoint": endpoint,
+    }
+    if capability:
+        detail["capability"] = capability
+    if details:
+        detail["details"] = details
+    return HTTPException(status_code=501, detail=detail)
 
 
 def _db_url() -> str | None:
@@ -890,84 +916,14 @@ def patch_console_secret_settings(
     payload: ConsoleSecretsPatchRequest,
     request: Request,
 ) -> ConsoleSettingsResponse:
-    _, actor = _require_admin(request)
-    database_url = _require_db_url()
+    _require_admin(request)
     scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
-    _validate_project_scope(database_url, scope_value, project_value)
-    if not _settings_tables_exist(database_url):
-        raise raise_503_db_unavailable()
-    normalized = _normalize_secret_update(payload.secrets)
-    try:
-        encrypted = {key: encrypt_secret(value) for key, value in normalized.items()}
-    except SecretsEncryptionError as exc:
-        raise raise_503_secrets_unavailable(str(exc)) from exc
-
-    try:
-        with psycopg.connect(database_url) as conn:
-            with conn.cursor() as cur:
-                for key, encrypted_secret in encrypted.items():
-                    cur.execute(
-                        """
-                        UPDATE console_secret_settings
-                        SET secret_value = NULL,
-                            secret_ciphertext = %s,
-                            secret_key_version = %s,
-                            configured = TRUE,
-                            last_rotated_at = now(),
-                            updated_by_user_id = %s,
-                            updated_at = now()
-                        WHERE scope = %s::pf_scope
-                          AND project_id IS NOT DISTINCT FROM %s
-                          AND key = %s
-                        """,
-                        (
-                            encrypted_secret.ciphertext,
-                            encrypted_secret.key_version,
-                            actor,
-                            scope_value,
-                            project_value,
-                            key,
-                        ),
-                    )
-                    if cur.rowcount == 0:
-                        cur.execute(
-                            """
-                            INSERT INTO console_secret_settings (
-                                scope, project_id, key, secret_value, secret_ciphertext, secret_key_version,
-                                configured, last_rotated_at, updated_by_user_id
-                            ) VALUES (%s::pf_scope, %s, %s, NULL, %s, %s, TRUE, now(), %s)
-                            """,
-                            (
-                                scope_value,
-                                project_value,
-                                key,
-                                encrypted_secret.ciphertext,
-                                encrypted_secret.key_version,
-                                actor,
-                            ),
-                        )
-            conn.commit()
-    except psycopg.OperationalError as exc:
-        raise raise_503_db_unavailable() from exc
-
-    _audit_log(
-        database_url,
-        action="secret_settings_rotated",
-        actor=actor,
-        scope=scope_value,
-        project_id=project_value,
-        payload={
-            "scope": scope_value,
-            "project_id": project_value,
-            "secret_keys_changed": sorted(normalized),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        },
-    )
-    return _build_settings_payload(
-        request=request,
-        scope=scope_value,
-        project_id=project_value,
-        database_url=database_url,
+    raise raise_unsupported(
+        "settings_secrets_stubbed",
+        "Secret rotation is stubbed for this API pass.",
+        endpoint="/console/settings/secrets",
+        capability="console_settings_secrets",
+        details={"scope": scope_value, "project_id": project_value},
     )
 
 
@@ -976,55 +932,15 @@ def purge_archived_notes(
     payload: PurgeArchivedNotesRequest,
     request: Request,
 ) -> PurgeArchivedNotesResponse:
-    _, actor = _require_admin(request)
+    _require_admin(request)
     if payload.confirm.strip().lower() != "purge archived notes":
         raise raise_400("confirmation_required")
-    database_url = _require_db_url()
-
-    counts_query = """
-        WITH archived_notes AS (
-            SELECT id FROM intake_notes WHERE status = 'archived'
-        ),
-        archived_utterances AS (
-            SELECT u.id FROM utterances u JOIN archived_notes n ON n.id = u.intake_note_id
-        ),
-        archived_prompts AS (
-            SELECT pg.id
-            FROM prompt_generations pg
-            JOIN archived_utterances u ON u.id = pg.utterance_id
-        )
-        SELECT
-            (SELECT COUNT(*)::int FROM archived_notes) AS intake_notes,
-            (SELECT COUNT(*)::int FROM archived_utterances) AS utterances,
-            (SELECT COUNT(*)::int FROM transcript_revisions tr JOIN archived_utterances u ON u.id = tr.utterance_id) AS transcript_revisions,
-            (SELECT COUNT(*)::int FROM archived_prompts) AS prompt_generations,
-            (SELECT COUNT(*)::int FROM deliveries d JOIN archived_prompts p ON p.id = d.prompt_generation_id) AS deliveries,
-            (SELECT COUNT(*)::int FROM llm_runs l JOIN archived_prompts p ON p.id = l.prompt_generation_id) AS llm_runs,
-            (SELECT COUNT(*)::int FROM processing_runs pr JOIN archived_utterances u ON u.id = pr.utterance_id) AS processing_runs
-    """
-    rows = _fetch_all(database_url, counts_query)
-    deleted_counts = {
-        key: int(value or 0)
-        for key, value in (rows[0] if rows else {}).items()
-    }
-    _exec(
-        database_url,
-        "DELETE FROM intake_notes WHERE status = 'archived'",
-    )
-    requested_at = datetime.now(timezone.utc).isoformat()
-    _audit_log(
-        database_url,
-        action="purge_archived_notes",
-        actor=actor,
-        payload={
-            "confirmation_status": "confirmed",
-            "deleted_counts": deleted_counts,
-            "timestamp": requested_at,
-        },
-    )
-    return PurgeArchivedNotesResponse(
-        deletedCounts=deleted_counts,
-        requestedAt=requested_at,
+    raise raise_unsupported(
+        "purge_archived_notes_stubbed",
+        "Archived note purge is stubbed for this API pass.",
+        endpoint="/console/admin/purge-archived-notes",
+        capability="console_admin_purge_archived_notes",
+        details={"confirm": "validated"},
     )
 
 
@@ -1053,6 +969,22 @@ def _validated_choice(name: str, value: str | None, allowed: set[str]) -> str | 
     if value not in allowed:
         raise raise_400(f"invalid_{name}")
     return value
+
+
+def _delivery_transition_allowed(current_status: str, requested_status: str) -> bool:
+    allowed_transitions = {
+        "not_started": {"queued", "failed"},
+        "queued": {"queued", "dispatching", "failed"},
+        "dispatching": {"delivered", "acked", "failed"},
+        "delivered": {"acked"},
+        "acked": set(),
+        "failed": set(),
+    }
+    return requested_status in allowed_transitions.get(current_status, set())
+
+
+def _terminal_mutation_locked(status: str, destination: str) -> bool:
+    return status in TERMINAL_DELIVERY_STATUSES and destination != "queue_only"
 
 
 def _pagination_meta(total: int, limit: int, offset: int) -> PaginationMeta:
@@ -1259,6 +1191,7 @@ def _fetch_ruleset_row(database_url: str, ruleset_id: str) -> dict[str, Any] | N
             name,
             scope::text AS scope,
             project_id,
+            version,
             is_active AS active,
             description,
             created_at AS updated_at
@@ -2064,7 +1997,13 @@ def _dispatch_target_payload(
     unsupported = target_type not in supported_types
     if payload.dry_run:
         if unsupported:
-            raise HTTPException(status_code=501, detail=outcome.error_text or f"unsupported_target_type:{target_type}")
+            raise raise_unsupported(
+                "unsupported_target_type",
+                outcome.error_text or f"unsupported_target_type:{target_type}",
+                endpoint=f"/console/targets/{target_id}/dispatch",
+                capability="delivery_dispatch",
+                details={"target_type": target_type, "dry_run": True},
+            )
         return _delivery_dispatch_response(
             delivery_row=delivery_row,
             target_row=target_row,
@@ -2084,9 +2023,16 @@ def _dispatch_target_payload(
             response_json=outcome.response_summary,
             error_text=outcome.error_text,
         )
-        raise HTTPException(
-            status_code=501,
-            detail=outcome.error_text or f"unsupported_target_type:{target_type}",
+        raise raise_unsupported(
+            "unsupported_target_type",
+            outcome.error_text or f"unsupported_target_type:{target_type}",
+            endpoint=f"/console/targets/{target_id}/dispatch",
+            capability="delivery_dispatch",
+            details={
+                "target_type": target_type,
+                "delivery_id": _as_str(updated["id"]),
+                "status": updated["status"],
+            },
         )
 
     updated = _update_delivery_attempt(
@@ -2627,6 +2573,41 @@ def error_fingerprints(
 @router.post("/deliveries/{delivery_id}/retry")
 def retry_delivery(delivery_id: str) -> dict[str, Any]:
     database_url = _require_db_url()
+    current_rows = _fetch_all(
+        database_url,
+        """
+        SELECT status::text AS status, destination::text AS destination
+        FROM deliveries
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (delivery_id,),
+    )
+    if not current_rows:
+        raise raise_404("delivery_not_found")
+    current = current_rows[0]
+    current_status = str(current["status"])
+    destination = str(current.get("destination") or "")
+    if _terminal_mutation_locked(current_status, destination):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "delivery_immutable_terminal_state",
+                "message": f"delivery is immutable after terminal state: {current_status}",
+                "current_status": current_status,
+                "destination": destination,
+            },
+        )
+    if destination != "queue_only" and current_status != "queued":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "delivery_retry_not_allowed",
+                "message": f"retry is not allowed from {current_status}",
+                "current_status": current_status,
+                "destination": destination,
+            },
+        )
     updated = _exec(
         database_url,
         """
@@ -2646,6 +2627,31 @@ def retry_delivery(delivery_id: str) -> dict[str, Any]:
 @router.post("/deliveries/{delivery_id}/reroute")
 def reroute_delivery(delivery_id: str, payload: DeliveryRerouteRequest) -> dict[str, Any]:
     database_url = _require_db_url()
+    current_rows = _fetch_all(
+        database_url,
+        """
+        SELECT status::text AS status, destination::text AS destination
+        FROM deliveries
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (delivery_id,),
+    )
+    if not current_rows:
+        raise raise_404("delivery_not_found")
+    current = current_rows[0]
+    current_status = str(current["status"])
+    destination = str(current.get("destination") or "")
+    if _terminal_mutation_locked(current_status, destination):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "delivery_reroute_locked",
+                "message": f"reroute is not allowed from terminal status {current_status}",
+                "current_status": current_status,
+                "destination": destination,
+            },
+        )
     target_rows = _fetch_all(
         database_url,
         """
@@ -2678,6 +2684,48 @@ def reroute_delivery(delivery_id: str, payload: DeliveryRerouteRequest) -> dict[
 @router.patch("/deliveries/{delivery_id}/status")
 def patch_delivery_status(delivery_id: str, payload: DeliveryStatusRequest) -> dict[str, Any]:
     database_url = _require_db_url()
+    current_rows = _fetch_all(
+        database_url,
+        """
+        SELECT status::text AS status, destination::text AS destination
+        FROM deliveries
+        WHERE id = %s
+        LIMIT 1
+        """,
+        (delivery_id,),
+    )
+    if not current_rows:
+        raise raise_404("delivery_not_found")
+    current = current_rows[0]
+    current_status = str(current["status"])
+    destination = str(current.get("destination") or "")
+    requested_status = payload.status.value
+    if _terminal_mutation_locked(current_status, destination):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "delivery_status_locked",
+                "message": f"status update is not allowed from terminal status {current_status}",
+                "current_status": current_status,
+                "requested_status": requested_status,
+                "destination": destination,
+            },
+        )
+    if (
+        destination != "queue_only"
+        and current_status != requested_status
+        and not _delivery_transition_allowed(current_status, requested_status)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "delivery_status_transition_not_allowed",
+                "message": f"cannot transition delivery from {current_status} to {requested_status}",
+                "current_status": current_status,
+                "requested_status": requested_status,
+                "destination": destination,
+            },
+        )
     updated = _exec(
         database_url,
         """
@@ -2697,24 +2745,92 @@ def patch_rule(rule_id: str, payload: RulePatchRequest) -> dict[str, Any]:
     database_url = _require_db_url()
     row = _fetch_all(
         database_url,
-        "SELECT enabled, priority FROM rules WHERE id = %s LIMIT 1",
+        "SELECT id, ruleset_id, enabled, priority FROM rules WHERE id = %s LIMIT 1",
         (rule_id,),
     )
     if not row:
         raise raise_404("rule_not_found")
     current = row[0]
-    enabled = payload.enabled if payload.enabled is not None else current["enabled"]
-    priority = payload.priority if payload.priority is not None else current["priority"]
-    _exec(
-        database_url,
-        """
-        UPDATE rules
-        SET enabled = %s,
-            priority = %s
-        WHERE id = %s
-        """,
-        (enabled, priority, rule_id),
-    )
+    ruleset_id = _as_str(current["ruleset_id"])
+    ruleset = _fetch_ruleset_row(database_url, ruleset_id)
+    if not ruleset:
+        raise raise_404("ruleset_not_found")
+    enabled = payload.enabled if payload.enabled is not None else bool(current["enabled"])
+    priority = payload.priority if payload.priority is not None else int(current["priority"])
+
+    try:
+        with psycopg.connect(database_url, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO rulesets (name, scope, project_id, version, is_active, description)
+                    VALUES (%s, %s::pf_scope, %s, %s, TRUE, %s)
+                    RETURNING id
+                    """,
+                    (
+                        ruleset["name"],
+                        ruleset["scope"],
+                        ruleset.get("project_id"),
+                        int(ruleset["version"]) + 1,
+                        ruleset.get("description"),
+                    ),
+                )
+                new_ruleset_row = cur.fetchone()
+                if not new_ruleset_row:
+                    raise raise_404("ruleset_not_found")
+                new_ruleset_id = _as_str(new_ruleset_row["id"])
+                cur.execute(
+                    """
+                    INSERT INTO rules (
+                        ruleset_id,
+                        rule_type,
+                        priority,
+                        enabled,
+                        match_conditions_json,
+                        action_json,
+                        notes
+                    )
+                    SELECT
+                        %s,
+                        rule_type,
+                        CASE WHEN id = %s THEN %s ELSE priority END,
+                        CASE WHEN id = %s THEN %s ELSE enabled END,
+                        match_conditions_json,
+                        action_json,
+                        notes
+                    FROM rules
+                    WHERE ruleset_id = %s
+                    """,
+                    (new_ruleset_id, rule_id, priority, rule_id, enabled, ruleset_id),
+                )
+                cur.execute(
+                    """
+                    UPDATE rulesets
+                    SET is_active = FALSE
+                    WHERE name = %s
+                      AND scope = %s::pf_scope
+                      AND project_id IS NOT DISTINCT FROM %s
+                      AND id <> %s
+                    """,
+                    (
+                        ruleset["name"],
+                        ruleset["scope"],
+                        ruleset.get("project_id"),
+                        new_ruleset_id,
+                    ),
+                )
+                if ruleset["scope"] == Scope.PROJECT.value and ruleset.get("project_id"):
+                    cur.execute(
+                        """
+                        UPDATE projects
+                        SET active_ruleset_id = %s
+                        WHERE id = %s
+                        """,
+                        (new_ruleset_id, ruleset["project_id"]),
+                    )
+            conn.commit()
+    except psycopg.IntegrityError as exc:
+        raise HTTPException(status_code=409, detail="ruleset_conflict") from exc
     return {"ok": True}
 
 
@@ -2785,41 +2901,14 @@ def dry_run_ruleset(ruleset_id: str, payload: RuleDryRunRequest) -> RuleDryRunRe
 
 @router.post("/dictionary/upsert")
 def upsert_dictionary(payload: DictionaryUpsertRequest) -> dict[str, Any]:
-    database_url = _require_db_url()
     scope = payload.scope.value if payload.scope is not None else "global"
-    source_term = payload.source_term or ""
-    normalized_term = payload.normalized_term or payload.source_term or ""
-    if not source_term.strip():
-        raise raise_400("source_term_required")
-    if payload.id:
-        _exec(
-            database_url,
-            """
-            UPDATE term_dictionary
-            SET scope = %s::pf_scope,
-                project_id = %s,
-                source_term = %s,
-                canonical_term = %s,
-                notes = %s
-            WHERE id = %s
-            """,
-            (scope, payload.project_id, source_term, normalized_term, payload.description, payload.id),
-        )
-        return {"ok": True, "payload": payload.model_dump(mode="json")}
-    inserted = _fetch_all(
-        database_url,
-        """
-        INSERT INTO term_dictionary (scope, project_id, source_term, canonical_term, notes)
-        VALUES (%s::pf_scope, %s, %s, %s, %s)
-        ON CONFLICT (scope, project_id, source_term)
-        DO UPDATE SET canonical_term = EXCLUDED.canonical_term, notes = EXCLUDED.notes
-        RETURNING id
-        """,
-        (scope, payload.project_id, source_term, normalized_term, payload.description),
+    raise raise_unsupported(
+        "dictionary_upsert_stubbed",
+        "Dictionary upsert is stubbed for this API pass.",
+        endpoint="/console/dictionary/upsert",
+        capability="console_dictionary_upsert",
+        details={"scope": scope, "project_id": payload.project_id},
     )
-    out = payload.model_dump(mode="json")
-    out["id"] = inserted[0]["id"] if inserted else None
-    return {"ok": True, "payload": out}
 
 
 @router.post("/templates", response_model=PromptTemplateDetailResponse)
@@ -2887,9 +2976,11 @@ def create_prompt_template(payload: PromptTemplateCreateRequest) -> PromptTempla
                         UPDATE prompt_templates
                         SET is_active = FALSE
                         WHERE output_contract_name = %s
+                          AND scope = %s::pf_scope
+                          AND project_id IS NOT DISTINCT FROM %s
                           AND id <> %s
                         """,
-                        (template_family_key, row["id"]),
+                        (template_family_key, scope_value, project_id, row["id"]),
                     )
             conn.commit()
     except psycopg.IntegrityError as exc:
@@ -2923,25 +3014,45 @@ def patch_prompt_template(template_id: str, payload: PromptTemplatePatchRequest)
         maximum=512,
     )
     body = _coerce_non_empty_string("body", payload.body if payload.body is not None else current["body"], maximum=100000)
-    version = payload.version if payload.version is not None else int(current["version"])
+    current_version = int(current["version"])
+    version = payload.version if payload.version is not None else current_version + 1
     if version < 1:
         raise raise_400("invalid_version")
+    if version <= current_version:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "template_version_not_increasing",
+                "message": "template patch must create a higher version",
+                "current_version": current_version,
+                "requested_version": version,
+            },
+        )
     is_active = payload.is_active if payload.is_active is not None else bool(current["is_active"])
     try:
         with psycopg.connect(database_url, row_factory=dict_row) as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    UPDATE prompt_templates
-                    SET name = %s,
-                        scope = %s::pf_scope,
-                        project_id = %s,
-                        prompt_type = %s,
-                        version = %s,
-                        body_template = %s,
-                        output_contract_name = %s,
-                        is_active = %s
-                    WHERE id = %s
+                    INSERT INTO prompt_templates (
+                        name,
+                        scope,
+                        project_id,
+                        prompt_type,
+                        version,
+                        body_template,
+                        output_contract_name,
+                        is_active
+                    ) VALUES (
+                        %s,
+                        %s::pf_scope,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s,
+                        %s
+                    )
                     RETURNING
                         id,
                         name,
@@ -2963,7 +3074,6 @@ def patch_prompt_template(template_id: str, payload: PromptTemplatePatchRequest)
                         body,
                         template_family_key,
                         is_active,
-                        template_id,
                     ),
                 )
                 row = cur.fetchone()
@@ -2973,9 +3083,11 @@ def patch_prompt_template(template_id: str, payload: PromptTemplatePatchRequest)
                         UPDATE prompt_templates
                         SET is_active = FALSE
                         WHERE output_contract_name = %s
+                          AND scope = %s::pf_scope
+                          AND project_id IS NOT DISTINCT FROM %s
                           AND id <> %s
                         """,
-                        (template_family_key, template_id),
+                        (template_family_key, scope_value.value, project_id, row["id"]),
                     )
             conn.commit()
     except psycopg.IntegrityError as exc:
@@ -2990,14 +3102,19 @@ def patch_prompt_template(template_id: str, payload: PromptTemplatePatchRequest)
 @router.post("/templates/{template_id}/activate")
 def activate_template(template_id: str, payload: TemplateActivateRequest) -> dict[str, Any]:
     database_url = _require_db_url()
+    template = _fetch_prompt_template_row(database_url, template_id)
+    if not template:
+        raise raise_404("template_not_found")
     _exec(
         database_url,
         """
         UPDATE prompt_templates
         SET is_active = FALSE
         WHERE output_contract_name = %s
+          AND scope = %s::pf_scope
+          AND project_id IS NOT DISTINCT FROM %s
         """,
-        (payload.family,),
+        (payload.family, template["scope"], template.get("project_id")),
     )
     updated = _exec(
         database_url,
@@ -3071,17 +3188,13 @@ def patch_prompt_priority(prompt_generation_id: str, payload: PromptPriorityRequ
 
 @router.post("/llm/assist", response_model=LLMAssistResponse)
 def llm_assist(payload: LLMAssistRequest) -> LLMAssistResponse:
-    llm_router = get_llm_router()
-    if not llm_router.enabled:
-        return LLMAssistResponse(result="LLM not enabled. Set PROMPTFORGE_LLM_ENABLED=true.", available=False)
-
-    context = {**(payload.context or {}), "context_type": payload.context_type}
-    review = llm_router.review_prompt(payload.prompt, context=context)
-    if review is None:
-        return LLMAssistResponse(result="No configured LLM provider available.", available=False)
-    polished = (review.raw_response or {}).get("polished_prompt")
-    text = polished or review.summary or ""
-    return LLMAssistResponse(result=text, provider=review.provider_name, model=review.model_name)
+    raise raise_unsupported(
+        "llm_assist_stubbed",
+        "LLM assist is stubbed for this API pass.",
+        endpoint="/console/llm/assist",
+        capability="console_llm_assist",
+        details={"context_type": payload.context_type},
+    )
 
 
 @router.patch("/intake/{intake_note_id}/archive")

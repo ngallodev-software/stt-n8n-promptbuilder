@@ -199,57 +199,26 @@ def test_console_settings_runtime_patch_validation_failures(seeded_console_datab
     assert response.json()["detail"] == "invalid_webhookUrl"
 
 
-def test_console_settings_secrets_success_masks_values_and_audit(seeded_console_database_url: str) -> None:
+def test_console_settings_secrets_stubbed_returns_structured_error(seeded_console_database_url: str) -> None:
     client = _client()
-    raw_secret = "sk-test-secret"
+    del seeded_console_database_url
     response = client.patch(
         "/console/settings/secrets",
         json={
             "scope": "global",
             "project_id": None,
             "secrets": {
-                "OPENAI_API_KEY": raw_secret,
+                "OPENAI_API_KEY": "sk-test-secret",
                 "ANTHROPIC_API_KEY": "anthropic-secret",
             },
         },
         headers={"X-PromptForge-Role": "admin", "X-PromptForge-Actor": "user:secret-admin"},
     )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["secrets"]["OPENAI_API_KEY"]["configured"] is True
-    assert body["secrets"]["ANTHROPIC_API_KEY"]["configured"] is True
-    assert raw_secret not in json.dumps(body)
-
-    stored = _fetch_one(
-        seeded_console_database_url,
-        """
-        SELECT secret_value, secret_ciphertext, secret_key_version, configured
-        FROM console_secret_settings
-        WHERE scope = 'global' AND project_id IS NULL AND key = 'OPENAI_API_KEY'
-        LIMIT 1
-        """,
-    )
-    assert stored["secret_value"] is None
-    assert stored["secret_ciphertext"]
-    assert stored["secret_ciphertext"] != raw_secret
-    assert stored["secret_key_version"] == 1
-    assert stored["configured"] is True
-
-    audit = _fetch_one(
-        seeded_console_database_url,
-        """
-        SELECT actor, payload_json
-        FROM console_admin_audit_log
-        WHERE action = 'secret_settings_rotated'
-        ORDER BY created_at DESC
-        LIMIT 1
-        """,
-    )
-    assert audit["actor"] == "user:secret-admin"
-    assert sorted(audit["payload_json"]["secret_keys_changed"]) == [
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-    ]
+    assert response.status_code == 501
+    detail = response.json()["detail"]
+    assert detail["code"] == "settings_secrets_stubbed"
+    assert detail["status"] == "unsupported"
+    assert detail["endpoint"] == "/console/settings/secrets"
 
 
 def test_console_settings_secret_permission_failure(seeded_console_database_url: str) -> None:
@@ -275,8 +244,8 @@ def test_console_settings_secret_rotation_fails_closed_without_master_key(
         json={"scope": "global", "project_id": None, "secrets": {"OPENAI_API_KEY": "sk-test"}},
         headers={"X-PromptForge-Role": "admin"},
     )
-    assert response.status_code == 503
-    assert response.json()["detail"] == "secrets_encryption_unconfigured"
+    assert response.status_code == 501
+    assert response.json()["detail"]["code"] == "settings_secrets_stubbed"
 
 
 def test_console_settings_reads_never_return_raw_secret_values(seeded_console_database_url: str) -> None:
@@ -318,7 +287,25 @@ def test_console_settings_reads_never_return_raw_secret_values(seeded_console_da
     assert "secret_ciphertext" not in serialized
 
 
-def test_console_purge_archived_notes_success_and_audit(seeded_console_database_url: str) -> None:
+def test_console_purge_archived_notes_stubbed_returns_structured_error(seeded_console_database_url: str) -> None:
+    del seeded_console_database_url
+    client = _client()
+    response = client.post(
+        "/console/admin/purge-archived-notes",
+        json={"confirm": "purge archived notes"},
+        headers={"X-PromptForge-Role": "admin", "X-PromptForge-Actor": "user:purger"},
+    )
+    assert response.status_code == 501
+    detail = response.json()["detail"]
+    assert detail["code"] == "purge_archived_notes_stubbed"
+    assert detail["status"] == "unsupported"
+    assert detail["endpoint"] == "/console/admin/purge-archived-notes"
+
+
+def test_console_purge_archived_notes_permission_and_confirmation_failures(
+    seeded_console_database_url: str,
+) -> None:
+    del seeded_console_database_url
     with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
         conn.execute(
             """
@@ -417,43 +404,6 @@ def test_console_purge_archived_notes_success_and_audit(seeded_console_database_
         )
 
     client = _client()
-    response = client.post(
-        "/console/admin/purge-archived-notes",
-        json={"confirm": "purge archived notes"},
-        headers={"X-PromptForge-Role": "admin", "X-PromptForge-Actor": "user:purger"},
-    )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["ok"] is True
-    assert body["deletedCounts"]["intake_notes"] >= 1
-    assert body["deletedCounts"]["utterances"] >= 1
-    assert body["deletedCounts"]["prompt_generations"] >= 1
-
-    note_row = _fetch_one(
-        seeded_console_database_url,
-        "SELECT id FROM intake_notes WHERE id = 'aaaaaaaa-0000-4000-8000-000000000099'",
-    )
-    assert note_row == {}
-
-    audit = _fetch_one(
-        seeded_console_database_url,
-        """
-        SELECT actor, payload_json
-        FROM console_admin_audit_log
-        WHERE action = 'purge_archived_notes'
-        ORDER BY created_at DESC
-        LIMIT 1
-        """,
-    )
-    assert audit["actor"] == "user:purger"
-    assert audit["payload_json"]["confirmation_status"] == "confirmed"
-
-
-def test_console_purge_archived_notes_permission_and_confirmation_failures(
-    seeded_console_database_url: str,
-) -> None:
-    client = _client()
-
     denied = client.post(
         "/console/admin/purge-archived-notes",
         json={"confirm": "purge archived notes"},

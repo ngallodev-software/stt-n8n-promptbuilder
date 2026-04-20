@@ -175,7 +175,7 @@ def test_rule_create_and_dry_run_persists_and_transforms(
 
 
 def test_dictionary_upsert_happy_path(client: TestClient) -> None:
-    """POST /dictionary/upsert - happy path."""
+    """POST /dictionary/upsert - currently returns explicit structured stub."""
     payload = {
         "scope": "global",
         "source_term": "test_source",
@@ -183,10 +183,11 @@ def test_dictionary_upsert_happy_path(client: TestClient) -> None:
         "description": "Test dictionary entry",
     }
     response = client.post("/dictionary/upsert", json=payload)
-    assert response.status_code in {200, 201}
-    if response.status_code in {200, 201}:
-        data = response.json()
-        assert data["ok"] is True
+    assert response.status_code == 501
+    detail = response.json()["detail"]
+    assert detail["code"] == "dictionary_upsert_stubbed"
+    assert detail["status"] == "unsupported"
+    assert detail["endpoint"] == "/console/dictionary/upsert"
 
 
 def test_dictionary_upsert_invalid_scope(client: TestClient) -> None:
@@ -201,11 +202,11 @@ def test_dictionary_upsert_invalid_scope(client: TestClient) -> None:
 
 
 def test_dictionary_upsert_minimal_payload(client: TestClient) -> None:
-    """POST /dictionary/upsert - minimal valid payload."""
+    """POST /dictionary/upsert - minimal payload still returns structured stub."""
     payload = {"source_term": "minimal"}
     response = client.post("/dictionary/upsert", json=payload)
-    # May succeed or fail depending on DB constraints
-    assert response.status_code in {200, 201, 400, 422}
+    assert response.status_code == 501
+    assert response.json()["detail"]["code"] == "dictionary_upsert_stubbed"
 
 
 # ============================================================================

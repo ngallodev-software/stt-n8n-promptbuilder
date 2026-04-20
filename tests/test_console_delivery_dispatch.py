@@ -172,7 +172,10 @@ def test_live_session_dispatch_rejected_explicitly(
         )
         assert response.status_code == 501
         body = response.json()
-        assert "not implemented in this environment" in body["detail"]
+        assert body["detail"]["code"] == "unsupported_target_type"
+        assert body["detail"]["status"] == "unsupported"
+        assert body["detail"]["endpoint"] == f"/console/targets/{CLAUDE_TARGET_ID}/dispatch"
+        assert "not implemented in this environment" in body["detail"]["message"]
 
         deliveries = _delivery_history(client, PROMPT_GENERATION_ID)
         failed = next(row for row in deliveries if row["target_id"] == CLAUDE_TARGET_ID and row["status"] == "failed")
