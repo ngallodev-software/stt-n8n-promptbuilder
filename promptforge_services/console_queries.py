@@ -941,3 +941,41 @@ def fetch_sla_summary(
         (*params, target_seconds, target_seconds),
     )
     return (rows[0] if rows else {"on_time_count": 0, "breached_count": 0, "project_slug": None}), window_start, window_end
+
+
+def fetch_recent_errors(database_url: str, hours: int = 24) -> list[dict[str, Any]]:
+    return _fetch_all(
+        database_url,
+        """
+        SELECT
+            id,
+            note_path,
+            delivery_id,
+            error_type,
+            error_message,
+            failed_at,
+            dismissed_at,
+            created_at
+        FROM workflow_error_records
+        WHERE created_at >= NOW() - INTERVAL '%s hours'
+        ORDER BY created_at DESC
+        LIMIT 100
+        """,
+        (hours,),
+    )
+
+
+def dismiss_error(database_url: str, error_id: str) -> int:
+    with psycopg.connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE workflow_error_records
+                SET dismissed_at = now()
+                WHERE id = %s AND dismissed_at IS NULL
+                """,
+                (error_id,),
+            )
+            count = cur.rowcount
+        conn.commit()
+    return count

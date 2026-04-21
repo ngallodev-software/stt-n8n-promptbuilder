@@ -82,6 +82,8 @@ from promptforge_services.console_models import (
     ThroughputSummaryResponse,
     TranscriptRevisionRecord,
     UtteranceRecord,
+    WorkflowErrorListResponse,
+    WorkflowErrorRecord,
 )
 from promptforge_services.llm.config import LLMSettings
 from promptforge_services.llm.router import get_llm_router
@@ -3218,3 +3220,29 @@ def archive_intake_note(intake_note_id: str) -> dict[str, Any]:
     if updated == 0:
         raise raise_404("intake_note_not_found")
     return {"ok": True}
+
+
+@router.get("/errors/recent", response_model=WorkflowErrorListResponse)
+def get_recent_errors(hours: int | None = None) -> WorkflowErrorListResponse:
+    database_url = _require_db_url()
+    hours_value = hours or 24
+    rows = cq.fetch_recent_errors(database_url, hours_value)
+    return WorkflowErrorListResponse(
+        errors=[WorkflowErrorRecord(
+            id=row["id"],
+            note_path=row["note_path"],
+            delivery_id=row["delivery_id"],
+            error_type=row["error_type"],
+            error_message=row["error_message"],
+            failed_at=_to_iso(row["failed_at"]),
+            dismissed_at=_to_iso(row["dismissed_at"]) if row["dismissed_at"] else None,
+            created_at=_to_iso(row["created_at"]),
+        ) for row in rows]
+    )
+
+
+@router.post("/errors/{error_id}/dismiss")
+def dismiss_error(error_id: str) -> dict[str, Any]:
+    database_url = _require_db_url()
+    updated = cq.dismiss_error(database_url, error_id)
+    return {"dismissed": updated > 0}

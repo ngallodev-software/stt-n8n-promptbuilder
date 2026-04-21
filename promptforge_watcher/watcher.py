@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Callable
 
+import psycopg
 import yaml
 from watchdog.events import FileSystemEvent, FileSystemEventHandler, FileSystemMovedEvent
 from watchdog.observers import Observer
@@ -47,13 +48,22 @@ def run() -> None:
     candidates = sorted(path for path in watch_path.rglob("*.md") if _is_processable_markdown_path(path))
     print(f"Discovered {len(candidates)} markdown note(s).")
     for note_path in candidates:
-        _process_note_path(
-            note_path=note_path,
-            cfg=cfg,
-            repository=repository,
-            seen_hashes=seen_hashes,
-            source="startup",
-        )
+        try:
+            _process_note_path(
+                note_path=note_path,
+                cfg=cfg,
+                repository=repository,
+                seen_hashes=seen_hashes,
+                source="startup",
+            )
+        except Exception as e:
+            print(f"Error processing note {note_path}: {str(e)}")
+            _write_workflow_error_record(
+                note_path=str(note_path),
+                error_type="watcher_exception",
+                error_message=str(e),
+                database_url=cfg.database_url,
+            )
 
     pending: dict[Path, float] = {}
     pending_lock = Lock()
@@ -72,13 +82,22 @@ def run() -> None:
         while True:
             ready = _drain_ready_paths(pending, pending_lock)
             for note_path in ready:
-                _process_note_path(
-                    note_path=note_path,
-                    cfg=cfg,
-                    repository=repository,
-                    seen_hashes=seen_hashes,
-                    source="event",
-                )
+                try:
+                    _process_note_path(
+                        note_path=note_path,
+                        cfg=cfg,
+                        repository=repository,
+                        seen_hashes=seen_hashes,
+                        source="event",
+                    )
+                except Exception as e:
+                    print(f"Error processing note {note_path}: {str(e)}")
+                    _write_workflow_error_record(
+                        note_path=str(note_path),
+                        error_type="watcher_exception",
+                        error_message=str(e),
+                        database_url=cfg.database_url,
+                    )
             time.sleep(0.1)
     except KeyboardInterrupt:
         print("Watcher stopping.")
@@ -256,6 +275,12 @@ def load_note(note_path: Path, vault_path: Path) -> ParsedNote:
     raw_text = note_path.read_text(encoding="utf-8")
     frontmatter, body_markdown = _split_frontmatter(raw_text)
     control_text, transcript_text = _extract_sections(body_markdown)
+
+    if "## Control" not in body_markdown:
+        raise ValueError("missing_section:Control")
+    if "## Transcript" not in body_markdown:
+        raise ValueError("missing_section:Transcript")
+
     note_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
     relative_path = note_path.relative_to(vault_path).as_posix()
     return ParsedNote(
@@ -383,3 +408,28 @@ def _extract_sections(body_markdown: str) -> tuple[str | None, str | None]:
             transcript = "\n\n".join(blocks[1:]).strip() or None
             return candidate, transcript
     return None, body_markdown.strip() or None
+
+
+def _write_workflow_error_record(
+    *,
+    note_path: str,
+    error_type: str,
+    error_message: str,
+    database_url: str | None,
+) -> None:
+    if not database_url:
+        print("Database URL not configured; skipping error record.")
+        return
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO workflow_error_records (id, note_path, error_type, error_message)
+                    VALUES (gen_random_uuid(), %s, %s, %s)
+                    """,
+                    (note_path, error_type, error_message),
+                )
+                conn.commit()
+    except Exception as insert_error:
+        print(f"Failed to write error record to workflow_error_records: {str(insert_error)}")

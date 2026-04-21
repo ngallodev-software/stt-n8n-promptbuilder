@@ -648,3 +648,18 @@ class HealthResponse(StrictBaseModel):
     db: Literal["ok", "error"]
     vault: Literal["ok", "error"]
     watcher: Literal["running", "unknown"]
+
+
+class WorkflowErrorRecord(StrictBaseModel):
+    id: str
+    note_path: str | None = None
+    delivery_id: str | None = None
+    error_type: str
+    error_message: str
+    failed_at: str
+    dismissed_at: str | None = None
+    created_at: str
+
+
+class WorkflowErrorListResponse(StrictBaseModel):
+    errors: list[WorkflowErrorRecord]
