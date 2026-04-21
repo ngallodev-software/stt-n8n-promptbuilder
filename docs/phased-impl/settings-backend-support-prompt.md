@@ -37,6 +37,7 @@ Primary backend deliverables
 
 Required persistence model
 - Add a durable settings store for console/backend runtime configuration.
+- If the live Postgres volume predates the settings tables, the first runtime write should bootstrap those tables in place instead of failing with `database_unconfigured`.
 - Support `scope` with the same vocabulary already used elsewhere where practical:
   - `global`
   - `project`

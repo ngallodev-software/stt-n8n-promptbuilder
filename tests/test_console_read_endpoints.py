@@ -297,6 +297,10 @@ def test_console_logs_happy_path_and_filters(seeded_console_database_url: str) -
     assert all(row["service"] == "api" for row in body["logs"])
     assert all(row["intake_note_id"] == FAILURE_NOTE_ID for row in body["logs"])
 
+    source_body = _as_dict(list_logs(source="api"))
+    assert source_body["pagination"]["total"] > 0
+    assert all(row["service"] == "api" for row in source_body["logs"])
+
 
 def test_console_metrics_queue_depth_throughput_sla_and_fingerprints(seeded_console_database_url: str) -> None:
     del seeded_console_database_url

@@ -114,6 +114,8 @@ services:
       - "127.0.0.1:${PROMPTFORGE_PORT:-8090}:8090"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - ./:/app
     healthcheck:
       test:
         [
@@ -157,6 +159,7 @@ services:
       PROMPTFORGE_OPENAI_COMPAT_MODEL: ${PROMPTFORGE_OPENAI_COMPAT_MODEL:-codex}
       TZ: ${TZ:-America/Los_Angeles}
     volumes:
+      - ./:/app
       - type: bind
         source: ${PROMPTFORGE_VAULT_SOURCE:-/lump/share/media/development}
         target: /vault

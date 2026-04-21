@@ -101,6 +101,7 @@ VALID_PROMPT_STATUSES = {"created", "preprocessed", "transforming", "structured_
 VALID_DELIVERY_STATUSES = {"not_started", "queued", "dispatching", "delivered", "acked", "failed"}
 VALID_SCOPE_VALUES = {"global", "user", "project"}
 VALID_LOG_LEVELS = {"debug", "info", "warn", "error"}
+VALID_LOG_SERVICES = {"watcher", "api", "n8n", "postgres"}
 VALID_TARGET_TYPES = {"none", "chat_session", "claude_session", "codex_session", "obsidian_note", "generic_queue"}
 VALID_PRIORITY_VALUES = {"low", "normal", "high", "urgent"}
 VALID_DESTINATIONS = {"chat", "cli", "obsidian_note", "queue_only"}
@@ -377,6 +378,113 @@ def _settings_tables_exist(database_url: str) -> bool:
         return False
     row = rows[0]
     return bool(row.get("runtime_exists"))
+
+
+def _ensure_settings_tables(database_url: str) -> None:
+    try:
+        with psycopg.connect(database_url) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS console_runtime_settings (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        scope pf_scope NOT NULL,
+                        project_id UUID NULL REFERENCES projects(id) ON DELETE CASCADE,
+                        key TEXT NOT NULL,
+                        value_json JSONB NOT NULL,
+                        updated_by_user_id TEXT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        CONSTRAINT chk_console_runtime_settings_key_nonempty CHECK (length(trim(key)) > 0),
+                        CONSTRAINT chk_console_runtime_settings_scope_project CHECK (
+                            (scope = 'project' AND project_id IS NOT NULL)
+                            OR (scope <> 'project' AND project_id IS NULL)
+                        ),
+                        UNIQUE(scope, project_id, key)
+                    );
+
+                    DROP TRIGGER IF EXISTS trg_console_runtime_settings_updated_at ON console_runtime_settings;
+                    CREATE TRIGGER trg_console_runtime_settings_updated_at
+                    BEFORE UPDATE ON console_runtime_settings
+                    FOR EACH ROW
+                    EXECUTE FUNCTION pf_set_updated_at();
+
+                    CREATE INDEX IF NOT EXISTS idx_console_runtime_settings_scope_project
+                        ON console_runtime_settings(scope, project_id);
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_console_runtime_settings_global_key
+                        ON console_runtime_settings(scope, key)
+                        WHERE project_id IS NULL;
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_console_runtime_settings_project_key
+                        ON console_runtime_settings(scope, project_id, key)
+                        WHERE project_id IS NOT NULL;
+                    """
+                )
+                cur.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS console_secret_settings (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        scope pf_scope NOT NULL,
+                        project_id UUID NULL REFERENCES projects(id) ON DELETE CASCADE,
+                        key TEXT NOT NULL,
+                        secret_value TEXT NULL,
+                        secret_ciphertext TEXT NULL,
+                        secret_key_version INTEGER NULL,
+                        configured BOOLEAN NOT NULL DEFAULT FALSE,
+                        last_rotated_at TIMESTAMPTZ NULL,
+                        updated_by_user_id TEXT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                        CONSTRAINT chk_console_secret_settings_key_nonempty CHECK (length(trim(key)) > 0),
+                        CONSTRAINT chk_console_secret_settings_scope_project CHECK (
+                            (scope = 'project' AND project_id IS NOT NULL)
+                            OR (scope <> 'project' AND project_id IS NULL)
+                        ),
+                        CONSTRAINT chk_console_secret_settings_ciphertext_version CHECK (
+                            (secret_ciphertext IS NULL AND secret_key_version IS NULL)
+                            OR (secret_ciphertext IS NOT NULL AND secret_key_version IS NOT NULL AND secret_key_version > 0)
+                        ),
+                        UNIQUE(scope, project_id, key)
+                    );
+
+                    ALTER TABLE console_secret_settings
+                        ADD COLUMN IF NOT EXISTS secret_ciphertext TEXT NULL;
+                    ALTER TABLE console_secret_settings
+                        ADD COLUMN IF NOT EXISTS secret_key_version INTEGER NULL;
+
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1
+                            FROM pg_constraint
+                            WHERE conname = 'chk_console_secret_settings_ciphertext_version'
+                        ) THEN
+                            ALTER TABLE console_secret_settings
+                            ADD CONSTRAINT chk_console_secret_settings_ciphertext_version CHECK (
+                                (secret_ciphertext IS NULL AND secret_key_version IS NULL)
+                                OR (secret_ciphertext IS NOT NULL AND secret_key_version IS NOT NULL AND secret_key_version > 0)
+                            );
+                        END IF;
+                    END $$;
+
+                    DROP TRIGGER IF EXISTS trg_console_secret_settings_updated_at ON console_secret_settings;
+                    CREATE TRIGGER trg_console_secret_settings_updated_at
+                    BEFORE UPDATE ON console_secret_settings
+                    FOR EACH ROW
+                    EXECUTE FUNCTION pf_set_updated_at();
+
+                    CREATE INDEX IF NOT EXISTS idx_console_secret_settings_scope_project
+                        ON console_secret_settings(scope, project_id);
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_console_secret_settings_global_key
+                        ON console_secret_settings(scope, key)
+                        WHERE project_id IS NULL;
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_console_secret_settings_project_key
+                        ON console_secret_settings(scope, project_id, key)
+                        WHERE project_id IS NOT NULL;
+                    """
+                )
+            conn.commit()
+    except psycopg.Error as exc:
+        raise raise_503_db_unavailable() from exc
 
 
 def _validate_project_scope(database_url: str, scope: str, project_id: str | None) -> None:
@@ -824,7 +932,7 @@ def patch_console_runtime_settings(
     scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
     _validate_project_scope(database_url, scope_value, project_value)
     if not _settings_tables_exist(database_url):
-        raise raise_503_db_unavailable()
+        _ensure_settings_tables(database_url)
     normalized = _normalize_runtime_update(payload.runtime)
 
     previous_rows = _safe_fetch_settings_rows(
@@ -2357,6 +2465,7 @@ def dispatch_delivery(
 def list_logs(
     level: str | None = None,
     service: str | None = None,
+    source: str | None = None,
     intake_note_id: str | None = None,
     limit: str | None = None,
     offset: str | None = None,
@@ -2366,10 +2475,11 @@ def list_logs(
     level_value = _validated_choice("level", level, VALID_LOG_LEVELS)
     intake_notes, deliveries, processing_runs = _fetch_log_sources(database_url, intake_note_id)
     logs = _build_log_records(intake_notes, deliveries, processing_runs)
+    service_value = _validated_choice("service", service or source, VALID_LOG_SERVICES)
     filtered_logs = _filter_logs(
         logs,
         level=level_value,
-        service=service,
+        service=service_value,
         intake_note_id=intake_note_id,
     )
     total = len(filtered_logs)

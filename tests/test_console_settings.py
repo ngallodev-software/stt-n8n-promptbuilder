@@ -159,6 +159,36 @@ def test_console_settings_runtime_patch_validation_failures(seeded_console_datab
     assert response.json()["detail"] == "invalid_webhookUrl"
 
 
+def test_console_settings_runtime_patch_bootstraps_missing_settings_tables(
+    seeded_console_database_url: str,
+) -> None:
+    with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
+        conn.execute("DROP TABLE IF EXISTS console_secret_settings CASCADE")
+        conn.execute("DROP TABLE IF EXISTS console_runtime_settings CASCADE")
+
+    client = _client()
+    response = client.patch(
+        "/console/settings/runtime",
+        json={"scope": "global", "project_id": None, "runtime": {"llmMode": "deterministic_only"}},
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["scope"] == "global"
+    assert body["runtime"]["llmMode"] == "deterministic_only"
+
+    row = _fetch_one(
+        seeded_console_database_url,
+        """
+        SELECT key, value_json
+        FROM console_runtime_settings
+        WHERE scope = 'global'
+          AND project_id IS NULL
+          AND key = 'llmMode'
+        """,
+    )
+    assert row["key"] == "llmMode"
+    assert row["value_json"] == "deterministic_only"
 
 
 def test_console_llm_assist_returns_structured_unsupported_response(

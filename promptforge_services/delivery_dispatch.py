@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from fastapi import HTTPException
 
 
 @dataclass(slots=True)
@@ -42,7 +43,14 @@ def compute_target_health(target_row: dict[str, Any]) -> TargetHealth:
     target_type = str(target_row.get("target_type") or "")
     config_json = target_row.get("config_json") or {}
     if target_type in LIVE_SESSION_TARGET_TYPES:
-        raise NotImplementedError("live-session delivery not supported in phase 2")
+        return TargetHealth(
+            status="degraded",
+            detail="live_session_delivery_unsupported_phase_2",
+            attached=False,
+            busy=False,
+            reachable=True,
+            stale=False,
+        )
     if target_type == "obsidian_note":
         target_folder = str(config_json.get("target_folder") or "").strip()
         vault_path = _vault_path()
@@ -92,8 +100,6 @@ def compute_target_health(target_row: dict[str, Any]) -> TargetHealth:
             reachable=True,
             stale=False,
         )
-    if target_type in LIVE_SESSION_TARGET_TYPES:
-        raise NotImplementedError("live-session delivery not supported in phase 2")
     return TargetHealth(
         status="error",
         detail=f"unsupported_target_type:{target_type}",
@@ -128,7 +134,17 @@ def dispatch_target_payload(
     }
 
     if target_type in LIVE_SESSION_TARGET_TYPES:
-        raise NotImplementedError("live-session delivery not supported in phase 2")
+        return DispatchOutcome(
+            accepted=False,
+            status="failed",
+            error_text="live_session_delivery_not_supported_phase_2",
+            request_summary=request_summary,
+            response_summary={
+                "accepted": False,
+                "machine_status": "unsupported",
+                "reason": "live_session_delivery_not_supported_phase_2",
+            },
+        )
 
     if target_type == "generic_queue":
         return DispatchOutcome(
