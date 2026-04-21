@@ -174,39 +174,6 @@ def test_rule_create_and_dry_run_persists_and_transforms(
 # ============================================================================
 
 
-def test_dictionary_upsert_happy_path(client: TestClient) -> None:
-    """POST /dictionary/upsert - currently returns explicit structured stub."""
-    payload = {
-        "scope": "global",
-        "source_term": "test_source",
-        "normalized_term": "test_normalized",
-        "description": "Test dictionary entry",
-    }
-    response = client.post("/dictionary/upsert", json=payload)
-    assert response.status_code == 501
-    detail = response.json()["detail"]
-    assert detail["code"] == "dictionary_upsert_stubbed"
-    assert detail["status"] == "unsupported"
-    assert detail["endpoint"] == "/console/dictionary/upsert"
-
-
-def test_dictionary_upsert_invalid_scope(client: TestClient) -> None:
-    """POST /dictionary/upsert - invalid scope enum returns 400."""
-    payload = {
-        "scope": "invalid_scope",
-        "source_term": "test",
-        "normalized_term": "test",
-    }
-    response = client.post("/dictionary/upsert", json=payload)
-    assert response.status_code in {400, 422}
-
-
-def test_dictionary_upsert_minimal_payload(client: TestClient) -> None:
-    """POST /dictionary/upsert - minimal payload still returns structured stub."""
-    payload = {"source_term": "minimal"}
-    response = client.post("/dictionary/upsert", json=payload)
-    assert response.status_code == 501
-    assert response.json()["detail"]["code"] == "dictionary_upsert_stubbed"
 
 
 # ============================================================================

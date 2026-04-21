@@ -4,6 +4,10 @@ PromptForge is a local-first voice-to-prompt compiler and router.
 
 It converts structured Obsidian intake notes into deterministic prompt artifacts, delivery records, and optional downstream automation events.
 
+## Localhost Only
+
+This application runs locally only. Do not expose to a network interface.
+
 ## Related Repositories
 
 - Backend/platform (this repo): `https://github.com/ngallodev-software/stt-n8n-promptbuilder`
@@ -45,7 +49,7 @@ pip install -e .
 ### 2) Run API service
 
 ```bash
-PYTHONPATH=. uvicorn promptforge_services.api:app --host 0.0.0.0 --port 8090 --reload
+PYTHONPATH=. uvicorn promptforge_services.api:app --host 127.0.0.1 --port 8090 --reload
 ```
 
 ### 3) Run watcher

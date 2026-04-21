@@ -5,6 +5,7 @@ import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
@@ -15,7 +16,6 @@ from psycopg.rows import dict_row
 
 from promptforge_services import console_queries as cq
 from promptforge_services.console_models import (
-    ConsoleRoleValue,
     ConsoleRuntimePatchRequest,
     ConsoleRuntimeSettings,
     ConsoleSecretsPatchRequest,
@@ -37,6 +37,7 @@ from promptforge_services.console_models import (
     DictionaryUpsertRequest,
     ErrorFingerprintListResponse,
     ErrorFingerprintRecord,
+    HealthResponse,
     IntakeNoteDetailResponse,
     IntakeNoteListResponse,
     IntakeNoteRecord,
@@ -244,42 +245,6 @@ def _as_optional_str(value: Any) -> str | None:
     return str(value)
 
 
-def _request_role(request: Request | None) -> ConsoleRoleValue:
-    if request is None:
-        return ConsoleRoleValue.ADMIN
-    raw = request.headers.get("x-promptforge-role", "").strip().lower()
-    if not raw:
-        return ConsoleRoleValue.ADMIN
-    try:
-        return ConsoleRoleValue(raw)
-    except ValueError as exc:
-        raise HTTPException(status_code=403, detail="invalid_console_role") from exc
-
-
-def _request_actor(request: Request | None) -> str:
-    if request is None:
-        return "system:console"
-    actor = request.headers.get("x-promptforge-actor", "").strip()
-    return actor or f"role:{_request_role(request).value}"
-
-
-def _settings_permissions(role: ConsoleRoleValue) -> ConsoleSettingsPermissions:
-    is_admin = role == ConsoleRoleValue.ADMIN
-    return ConsoleSettingsPermissions(
-        can_update_runtime=is_admin,
-        can_rotate_secrets=is_admin,
-        can_purge_archived_notes=is_admin,
-    )
-
-
-def _require_admin(request: Request | None) -> tuple[ConsoleRoleValue, str]:
-    role = _request_role(request)
-    actor = _request_actor(request)
-    if role != ConsoleRoleValue.ADMIN:
-        raise HTTPException(status_code=403, detail="forbidden")
-    return role, actor
-
-
 def _normalize_scope(scope: Scope, project_id: str | None) -> tuple[str, str | None]:
     if scope == Scope.PROJECT and not project_id:
         raise raise_400("project_id_required")
@@ -304,6 +269,7 @@ def _default_runtime_settings() -> dict[str, Any]:
         "codexReasoningEffort": llm.codex_reasoning_effort,
         "openaiBaseUrl": llm.openai_base_url or "https://api.openai.com/v1",
         "anthropicBaseUrl": llm.anthropic_base_url or "https://api.anthropic.com",
+        "llmAssistEnabled": False,
     }
 
 
@@ -402,14 +368,13 @@ def _settings_tables_exist(database_url: str) -> bool:
         database_url,
         """
         SELECT
-            to_regclass('console_runtime_settings') IS NOT NULL AS runtime_exists,
-            to_regclass('console_secret_settings') IS NOT NULL AS secret_exists
+            to_regclass('console_runtime_settings') IS NOT NULL AS runtime_exists
         """,
     )
     if not rows:
         return False
     row = rows[0]
-    return bool(row.get("runtime_exists")) and bool(row.get("secret_exists"))
+    return bool(row.get("runtime_exists"))
 
 
 def _validate_project_scope(database_url: str, scope: str, project_id: str | None) -> None:
@@ -436,19 +401,9 @@ def _safe_fetch_settings_rows(
             """,
             (scope, project_id),
         )
-        secret_rows = _fetch_all(
-            database_url,
-            """
-            SELECT key, configured, last_rotated_at, updated_at, secret_ciphertext, secret_key_version, secret_value
-            FROM console_secret_settings
-            WHERE scope = %s::pf_scope AND project_id IS NOT DISTINCT FROM %s
-            ORDER BY key ASC
-            """,
-            (scope, project_id),
-        )
     except psycopg.Error:
         return [], []
-    return runtime_rows, secret_rows
+    return runtime_rows, []
 
 
 def _build_settings_payload(
@@ -482,14 +437,17 @@ def _build_settings_payload(
                 if isinstance(row.get("updated_at"), datetime):
                     updated_candidates.append(row["updated_at"])
 
-    role = _request_role(request)
     latest_updated = max(updated_candidates).astimezone(timezone.utc).isoformat()
     return ConsoleSettingsResponse(
         scope=Scope(scope),
         project_id=project_id,
         runtime=ConsoleRuntimeSettings.model_validate(runtime_values),
         secrets={key: SecretSettingMetadata.model_validate(value) for key, value in secret_values.items()},
-        permissions=_settings_permissions(role),
+        permissions=ConsoleSettingsPermissions(
+            can_update_runtime=True,
+            can_rotate_secrets=True,
+            can_purge_archived_notes=True,
+        ),
         updated_at=latest_updated,
     )
 
@@ -503,17 +461,7 @@ def _audit_log(
     project_id: str | None = None,
     payload: dict[str, Any],
 ) -> None:
-    try:
-        _exec(
-            database_url,
-            """
-            INSERT INTO console_admin_audit_log (action, actor, scope, project_id, payload_json)
-            VALUES (%s, %s, %s::pf_scope, %s, %s::jsonb)
-            """,
-            (action, actor, scope, project_id, json.dumps(payload)),
-        )
-    except psycopg.Error:
-        return
+    pass
 
 
 def _build_logs(
@@ -818,6 +766,36 @@ def console_bootstrap_endpoint(request: Request) -> dict[str, Any]:
     return _console_bootstrap_payload(request=request)
 
 
+def _check_db_health(database_url: str | None) -> str:
+    if not database_url:
+        return "error"
+    try:
+        with psycopg.connect(database_url) as conn:  # type: ignore
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")  # type: ignore
+        return "ok"
+    except Exception:
+        return "error"
+
+
+def _check_vault_health() -> str:
+    vault_path = os.getenv("PROMPTFORGE_VAULT_PATH", "/vault")
+    try:
+        return "ok" if Path(vault_path).exists() else "error"
+    except Exception:
+        return "error"
+
+
+@router.get("/health", response_model=HealthResponse)
+def get_health() -> HealthResponse:
+    database_url = _db_url()
+    return HealthResponse(
+        db=_check_db_health(database_url),  # type: ignore
+        vault=_check_vault_health(),  # type: ignore
+        watcher="unknown",
+    )
+
+
 @router.get("/settings", response_model=ConsoleSettingsResponse)
 def get_console_settings(
     request: Request,
@@ -839,7 +817,7 @@ def patch_console_runtime_settings(
     payload: ConsoleRuntimePatchRequest,
     request: Request,
 ) -> ConsoleSettingsResponse:
-    _, actor = _require_admin(request)
+    actor = "system:console"
     database_url = _require_db_url()
     scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
     _validate_project_scope(database_url, scope_value, project_value)
@@ -911,37 +889,6 @@ def patch_console_runtime_settings(
     )
 
 
-@router.patch("/settings/secrets", response_model=ConsoleSettingsResponse)
-def patch_console_secret_settings(
-    payload: ConsoleSecretsPatchRequest,
-    request: Request,
-) -> ConsoleSettingsResponse:
-    _require_admin(request)
-    scope_value, project_value = _normalize_scope(payload.scope, payload.project_id)
-    raise raise_unsupported(
-        "settings_secrets_stubbed",
-        "Secret rotation is stubbed for this API pass.",
-        endpoint="/console/settings/secrets",
-        capability="console_settings_secrets",
-        details={"scope": scope_value, "project_id": project_value},
-    )
-
-
-@router.post("/admin/purge-archived-notes", response_model=PurgeArchivedNotesResponse)
-def purge_archived_notes(
-    payload: PurgeArchivedNotesRequest,
-    request: Request,
-) -> PurgeArchivedNotesResponse:
-    _require_admin(request)
-    if payload.confirm.strip().lower() != "purge archived notes":
-        raise raise_400("confirmation_required")
-    raise raise_unsupported(
-        "purge_archived_notes_stubbed",
-        "Archived note purge is stubbed for this API pass.",
-        endpoint="/console/admin/purge-archived-notes",
-        capability="console_admin_purge_archived_notes",
-        details={"confirm": "validated"},
-    )
 
 
 def _parse_int_param(name: str, value: str | None, default: int, minimum: int) -> int:
@@ -2441,10 +2388,9 @@ def queue_depth(
     destination_value = _validated_choice("destination", destination, VALID_DESTINATIONS)
     row = cq.fetch_queue_depth(database_url, priority=priority_value, destination=destination_value)
     return QueueDepthResponse(
-        queue_depth=int(row["queue_depth"]),
-        queued_count=int(row["queued_count"]),
-        dispatching_count=int(row["dispatching_count"]),
-        observed_at=datetime.now(timezone.utc).isoformat(),
+        queued=int(row["queued"]),
+        dispatching=int(row["dispatching"]),
+        failed_last_24h=int(row["failed_last_24h"]),
     )
 
 
@@ -2634,20 +2580,27 @@ def retry_delivery(delivery_id: str) -> dict[str, Any]:
                 "destination": destination,
             },
         )
+    attempt_rows = _fetch_all(
+        database_url,
+        "INSERT INTO delivery_attempts (delivery_id, outcome) VALUES (%s, 'pending') RETURNING id",
+        (delivery_id,),
+    )
+    attempt_id = str(attempt_rows[0]["id"])
     updated = _exec(
         database_url,
         """
         UPDATE deliveries
         SET status = 'queued',
             queued_at = now(),
-            error_text = NULL
+            error_text = NULL,
+            latest_attempt_id = %s
         WHERE id = %s
         """,
-        (delivery_id,),
+        (attempt_id, delivery_id),
     )
     if updated == 0:
         raise raise_404("delivery_not_found")
-    return {"ok": True, "message": "Retry queued"}
+    return {"ok": True, "message": "Retry queued", "attempt_id": attempt_id}
 
 
 @router.post("/deliveries/{delivery_id}/reroute")
@@ -2691,20 +2644,27 @@ def reroute_delivery(delivery_id: str, payload: DeliveryRerouteRequest) -> dict[
     if not target_rows:
         raise raise_404("target_not_found")
     target = target_rows[0]
+    attempt_rows = _fetch_all(
+        database_url,
+        "INSERT INTO delivery_attempts (delivery_id, target_id, outcome) VALUES (%s, %s, 'pending') RETURNING id",
+        (delivery_id, target["id"]),
+    )
+    attempt_id = str(attempt_rows[0]["id"])
     updated = _exec(
         database_url,
         """
         UPDATE deliveries
         SET delivery_target_id = %s,
             target_type = %s::pf_target_type,
-            target_identifier = %s
+            target_identifier = %s,
+            latest_attempt_id = %s
         WHERE id = %s
         """,
-        (target["id"], target["target_type"], target["target_identifier"], delivery_id),
+        (target["id"], target["target_type"], target["target_identifier"], attempt_id, delivery_id),
     )
     if updated == 0:
         raise raise_404("delivery_not_found")
-    return {"ok": True}
+    return {"ok": True, "attempt_id": attempt_id}
 
 
 @router.patch("/deliveries/{delivery_id}/status")
@@ -2925,16 +2885,6 @@ def dry_run_ruleset(ruleset_id: str, payload: RuleDryRunRequest) -> RuleDryRunRe
     return _rule_dry_run_payload(database_url=database_url, ruleset_id=ruleset_id, request=payload)
 
 
-@router.post("/dictionary/upsert")
-def upsert_dictionary(payload: DictionaryUpsertRequest) -> dict[str, Any]:
-    scope = payload.scope.value if payload.scope is not None else "global"
-    raise raise_unsupported(
-        "dictionary_upsert_stubbed",
-        "Dictionary upsert is stubbed for this API pass.",
-        endpoint="/console/dictionary/upsert",
-        capability="console_dictionary_upsert",
-        details={"scope": scope, "project_id": payload.project_id},
-    )
 
 
 @router.post("/templates", response_model=PromptTemplateDetailResponse)
@@ -3213,7 +3163,14 @@ def patch_prompt_priority(prompt_generation_id: str, payload: PromptPriorityRequ
 
 
 @router.post("/llm/assist", response_model=LLMAssistResponse)
-def llm_assist(payload: LLMAssistRequest) -> LLMAssistResponse:
+def llm_assist(payload: LLMAssistRequest, request: Request) -> LLMAssistResponse:
+    settings = _build_settings_payload(request=request)
+    if not settings.runtime.llmAssistEnabled:
+        raise HTTPException(
+            status_code=501,
+            detail={"detail": "LLM assist is not enabled. Enable via runtime settings."},
+        )
+
     llm_router = get_llm_router()
     if not llm_router.enabled:
         raise HTTPException(

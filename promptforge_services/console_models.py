@@ -227,6 +227,7 @@ class ConsoleRuntimeSettings(StrictBaseModel):
     codexReasoningEffort: CodexReasoningEffort
     openaiBaseUrl: str
     anthropicBaseUrl: str
+    llmAssistEnabled: bool = False
 
 
 class SecretSettingMetadata(StrictBaseModel):
@@ -602,10 +603,9 @@ class LogDetailResponse(StrictBaseModel):
 
 
 class QueueDepthResponse(StrictBaseModel):
-    queue_depth: int
-    queued_count: int
-    dispatching_count: int
-    observed_at: str
+    queued: int
+    dispatching: int
+    failed_last_24h: int
 
 
 class ThroughputSummaryResponse(StrictBaseModel):
@@ -642,3 +642,9 @@ class ErrorFingerprintRecord(StrictBaseModel):
 
 class ErrorFingerprintListResponse(PaginatedResponse[ErrorFingerprintRecord]):
     error_fingerprints: list[ErrorFingerprintRecord] = Field(alias="errorFingerprints")
+
+
+class HealthResponse(StrictBaseModel):
+    db: Literal["ok", "error"]
+    vault: Literal["ok", "error"]
+    watcher: Literal["running", "unknown"]

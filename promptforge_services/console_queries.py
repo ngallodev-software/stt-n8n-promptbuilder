@@ -831,15 +831,30 @@ def fetch_queue_depth(
         database_url,
         f"""
         SELECT
-            COUNT(*)::int AS queue_depth,
-            COUNT(*) FILTER (WHERE status = 'queued')::int AS queued_count,
-            COUNT(*) FILTER (WHERE status = 'dispatching')::int AS dispatching_count
+            COUNT(*) FILTER (WHERE status = 'queued')::int AS queued,
+            COUNT(*) FILTER (WHERE status = 'dispatching')::int AS dispatching
         FROM deliveries
         {where_sql}
         """,
         tuple(params),
     )
-    return rows[0] if rows else {"queue_depth": 0, "queued_count": 0, "dispatching_count": 0}
+    delivery_stats = rows[0] if rows else {"queued": 0, "dispatching": 0}
+
+    error_rows = _fetch_all(
+        database_url,
+        """
+        SELECT COUNT(*)::int AS failed_last_24h
+        FROM workflow_error_records
+        WHERE created_at >= NOW() - INTERVAL '24 hours'
+        """,
+    )
+    failed_count = error_rows[0]["failed_last_24h"] if error_rows else 0
+
+    return {
+        "queued": delivery_stats["queued"],
+        "dispatching": delivery_stats["dispatching"],
+        "failed_last_24h": failed_count,
+    }
 
 
 def fetch_project_by_id(database_url: str, project_id: str) -> dict[str, Any] | None:

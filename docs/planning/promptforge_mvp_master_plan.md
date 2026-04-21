@@ -1,5 +1,8 @@
 # PromptForge MVP Master Plan
 
+> **NOTE: This document is historical. Phase 2 architecture differs — see docs/promptforge-system-architecture.md.**
+> Key changes: Python owns all workflow (intake, parse, compile, queue, dispatch, retry). n8n is an optional reactive sidecar only — it receives webhook events after Python writes state; it does not orchestrate workflow, manage retries, or own queue. Postgres remains canonical truth.
+
 ## Purpose
 
 PromptForge is a local-first voice-to-prompt compiler and router.
