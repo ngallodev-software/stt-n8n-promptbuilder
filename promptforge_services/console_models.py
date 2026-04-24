@@ -252,6 +252,25 @@ class ConsoleSettingsResponse(StrictBaseModel):
     updated_at: str
 
 
+class KanbanWorkspaceTaskCounts(StrictBaseModel):
+    backlog: int
+    in_progress: int = Field(alias="inProgress")
+    review: int
+    trash: int
+
+
+class KanbanWorkspaceRecord(StrictBaseModel):
+    workspace_id: str = Field(alias="workspaceId")
+    name: str
+    path: str
+    task_counts: KanbanWorkspaceTaskCounts = Field(alias="taskCounts")
+
+
+class KanbanWorkspaceDiscoveryResponse(StrictBaseModel):
+    current_workspace_id: str | None = Field(default=None, alias="currentWorkspaceId")
+    workspaces: list[KanbanWorkspaceRecord]
+
+
 class ConsoleRuntimePatchRequest(StrictBaseModel):
     scope: Scope = Scope.GLOBAL
     project_id: str | None = None

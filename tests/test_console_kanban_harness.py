@@ -117,3 +117,26 @@ def test_apply_prompt_to_kanban_requires_project_scope(monkeypatch) -> None:
     response = _client().post("/console/prompts/pg_123/kanban/apply")
     assert response.status_code == 400
     assert response.json()["detail"] == "prompt_generation_project_scope_required"
+
+
+def test_discover_kanban_workspaces(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "promptforge_services.console_api.list_kanban_workspaces",
+        lambda **_kwargs: {
+            "currentWorkspaceId": "workspace-123",
+            "workspaces": [
+                {
+                    "workspaceId": "workspace-123",
+                    "name": "alpha",
+                    "path": "/tmp/alpha",
+                    "taskCounts": {"backlog": 1, "inProgress": 0, "review": 0, "trash": 0},
+                }
+            ],
+        },
+    )
+
+    response = _client().get("/console/kanban/workspaces", params={"base_url": "http://127.0.0.1:3000"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["currentWorkspaceId"] == "workspace-123"
+    assert body["workspaces"][0]["workspaceId"] == "workspace-123"

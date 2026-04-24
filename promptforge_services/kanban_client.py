@@ -9,6 +9,7 @@ from promptforge_services.kanban_manifest_builder import (
     KanbanImportResponse,
     KanbanWorkspaceBinding,
 )
+from promptforge_services.console_models import KanbanWorkspaceDiscoveryResponse
 
 
 class KanbanImportClientError(RuntimeError):
@@ -60,3 +61,46 @@ def import_kanban_manifest(
     if not isinstance(payload, dict):
         raise KanbanImportClientError("kanban_response_invalid")
     return KanbanImportResponse.model_validate(payload)
+
+
+def list_kanban_workspaces(
+    *,
+    kanban_base_url: str,
+    timeout_seconds: float = 20.0,
+) -> KanbanWorkspaceDiscoveryResponse:
+    base_url = kanban_base_url.rstrip("/")
+    if not base_url:
+        raise KanbanImportClientError("kanban_base_url_missing")
+
+    try:
+        response = httpx.get(
+            f"{base_url}/api/trpc/projects.list",
+            timeout=timeout_seconds,
+        )
+    except httpx.HTTPError as exc:
+        raise KanbanImportClientError(f"kanban_transport_error:{exc.__class__.__name__}") from exc
+
+    payload = _unwrap_trpc_payload(response.json())
+    if response.status_code != 200:
+        raise KanbanImportClientError(f"kanban_http_error:{response.status_code}:{payload}")
+    if not isinstance(payload, dict):
+        raise KanbanImportClientError("kanban_response_invalid")
+
+    normalized = {
+        "currentWorkspaceId": payload.get("currentProjectId"),
+        "workspaces": [
+            {
+                "workspaceId": workspace.get("id"),
+                "name": workspace.get("name"),
+                "path": workspace.get("path"),
+                "taskCounts": {
+                    "backlog": (workspace.get("taskCounts") or {}).get("backlog", 0),
+                    "inProgress": (workspace.get("taskCounts") or {}).get("in_progress", 0),
+                    "review": (workspace.get("taskCounts") or {}).get("review", 0),
+                    "trash": (workspace.get("taskCounts") or {}).get("trash", 0),
+                },
+            }
+            for workspace in payload.get("projects", [])
+        ],
+    }
+    return KanbanWorkspaceDiscoveryResponse.model_validate(normalized)

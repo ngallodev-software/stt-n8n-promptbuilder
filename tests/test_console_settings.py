@@ -169,6 +169,17 @@ def test_console_settings_runtime_patch_validation_failures(seeded_console_datab
     assert response.json()["detail"] == "invalid_kanbanWorkspaceId"
 
 
+def test_console_settings_runtime_patch_allows_blank_webhook_url(seeded_console_database_url: str) -> None:
+    client = _client()
+    response = client.patch(
+        "/console/settings/runtime",
+        json={"scope": "global", "project_id": None, "runtime": {"webhookUrl": ""}},
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 200
+    assert response.json()["runtime"]["webhookUrl"] == ""
+
+
 def test_console_settings_runtime_patch_bootstraps_missing_settings_tables(
     seeded_console_database_url: str,
 ) -> None:

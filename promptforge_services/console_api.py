@@ -15,7 +15,7 @@ from pydantic import Field, ValidationError
 from psycopg.rows import dict_row
 
 from promptforge_services import console_queries as cq
-from promptforge_services.kanban_client import KanbanImportClientError, import_kanban_manifest
+from promptforge_services.kanban_client import KanbanImportClientError, import_kanban_manifest, list_kanban_workspaces
 from promptforge_services.kanban_manifest_builder import (
     KanbanPromptApplyResponse,
     KanbanPromptPreviewResponse,
@@ -48,6 +48,7 @@ from promptforge_services.console_models import (
     IntakeNoteDetailResponse,
     IntakeNoteListResponse,
     IntakeNoteRecord,
+    KanbanWorkspaceDiscoveryResponse,
     LogListResponse,
     LogRecord,
     NoteLineageResponse,
@@ -333,6 +334,21 @@ def _validate_url(name: str, value: Any, *, allow_http: bool = True, allow_local
     return text
 
 
+def _validate_optional_url(
+    name: str,
+    value: Any,
+    *,
+    allow_http: bool = True,
+    allow_local_http: bool = False,
+) -> str:
+    if not isinstance(value, str):
+        raise raise_400(f"invalid_{name}")
+    text = value.strip()
+    if not text:
+        return ""
+    return _validate_url(name, text, allow_http=allow_http, allow_local_http=allow_local_http)
+
+
 def _normalize_runtime_update(runtime_patch: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(runtime_patch, dict) or not runtime_patch:
         raise raise_400("invalid_runtime")
@@ -347,7 +363,7 @@ def _normalize_runtime_update(runtime_patch: dict[str, Any]) -> dict[str, Any]:
                 raise raise_400(f"invalid_{key}")
             normalized[key] = text
         elif key == "webhookUrl":
-            normalized[key] = _validate_url(key, value, allow_http=False, allow_local_http=True)
+            normalized[key] = _validate_optional_url(key, value, allow_http=False, allow_local_http=True)
         elif key == "llmMode":
             if value not in {"deterministic_only", "deterministic_plus_review", "llm_inference_optional"}:
                 raise raise_400(f"invalid_{key}")
@@ -1010,6 +1026,15 @@ def patch_console_runtime_settings(
         project_id=project_value,
         database_url=database_url,
     )
+
+
+@router.get("/kanban/workspaces", response_model=KanbanWorkspaceDiscoveryResponse)
+def discover_kanban_workspaces(base_url: str) -> KanbanWorkspaceDiscoveryResponse:
+    normalized_base_url = _validate_url("kanbanBaseUrl", base_url, allow_http=True)
+    try:
+        return list_kanban_workspaces(kanban_base_url=normalized_base_url)
+    except KanbanImportClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 

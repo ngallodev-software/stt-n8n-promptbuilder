@@ -151,6 +151,8 @@ Apply record must store:
 - added backend-owned preview/apply routes:
   - `GET /console/prompts/{prompt_generation_id}/kanban/preview`
   - `POST /console/prompts/{prompt_generation_id}/kanban/apply`
+- added backend-owned workspace discovery route:
+  - `GET /console/kanban/workspaces?base_url=...`
 - added focused builder tests:
   - `tests/test_kanban_manifest_builder.py`
 - added focused adapter and route tests:
@@ -170,9 +172,14 @@ Apply record must store:
   - Prompt Forge apply route returned `ok=true`, `applied=true`
   - Kanban workspace state contained one backlog card with `externalTaskKey=pf:pg:pg_live_001`
   - verified workspace id: `pf-kanban-live-hqcq0l`
+- discovery validation:
+  - backend workspace discovery route returns Kanban project summaries through `projects.list`
+  - route tests pass
 
 ## Remaining
 
 - no multi-task chain fanout in v1
 - no start-task path in v1
 - no reverse sync from Kanban into Prompt Forge
+- no create-workspace flow yet
+- no explicit Kanban availability/recovery state yet

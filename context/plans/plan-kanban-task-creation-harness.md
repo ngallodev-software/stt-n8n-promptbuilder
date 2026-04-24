@@ -162,6 +162,76 @@ Reason:
 - validation:
   - tracking doc reflects done/pending state
 
+## Next Phase: Operator Enablement
+
+These items are out of the current implemented slice, but they are the right next plan based on live usage.
+
+### T-10 Add Kanban connectivity/status preflight
+
+- model: `gpt-5.4-mini low`
+- goal: detect when Kanban is unreachable before preview/apply
+- scope:
+  - lightweight reachability check against `kanbanBaseUrl`
+  - distinguish:
+    - Kanban not running
+    - Kanban reachable but workspace binding missing/invalid
+    - Kanban reachable and ready
+- validation:
+  - UI gets structured failure instead of opaque network error
+  - backend preserves fail-closed behavior
+
+### T-11 Add workspace discovery from live Kanban
+
+- model: `gpt-5.4-mini medium`
+- goal: stop requiring manual workspace id lookup
+- grounded seam:
+  - Kanban `projects.list`
+- scope:
+  - Prompt Forge backend calls Kanban `projects.list`
+  - expose project summaries including `workspaceId`
+  - console shows selectable workspace list for a running Kanban instance
+- validation:
+  - operator can pick an existing workspace without manual id copy/paste
+  - selected workspace id persists into Prompt Forge runtime settings
+
+### T-12 Add workspace creation flow through Kanban
+
+- model: `gpt-5.4-medium`
+- goal: allow creation of a new Kanban workspace from Prompt Forge when Kanban is already running
+- grounded seam:
+  - Kanban `projects.add`
+- scope:
+  - operator supplies repo path or clone input
+  - Prompt Forge backend calls Kanban create-project flow
+  - resulting `workspaceId` is written back into project-scoped Prompt Forge settings
+- constraints:
+  - do not invent new Kanban APIs
+  - do not bypass Kanban project registration rules
+- validation:
+  - newly created workspace appears in discovery list
+  - created workspace can be used immediately for preview/apply
+
+### T-13 Add local launch guidance, not hidden install magic
+
+- model: `gpt-5.4-mini low`
+- goal: help operator start Kanban locally when it is not running
+- scope:
+  - show actionable local instructions
+  - optionally deep-link to configured local source path
+  - optionally provide one explicit local-only launch command path if you later want Prompt Forge to spawn Kanban
+- non-goal:
+  - do not silently install Kanban
+  - do not silently spawn processes from the browser
+- validation:
+  - operator can recover from “Kanban unavailable” with clear next steps
+
+## Operator Gaps Confirmed
+
+- current v1 requires manual `kanbanWorkspaceId`
+- current v1 assumes Kanban is already running
+- current v1 does not expose workspace discovery or creation
+- current v1 should not guess or auto-create workspaces without explicit operator intent
+
 ## Validation Gates
 
 ### Gate A: Mapping gate

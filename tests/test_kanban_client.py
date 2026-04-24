@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import httpx
 
-from promptforge_services.kanban_client import KanbanImportClientError, import_kanban_manifest
+from promptforge_services.kanban_client import KanbanImportClientError, import_kanban_manifest, list_kanban_workspaces
 from promptforge_services.kanban_manifest_builder import (
     KanbanImportManifest,
     KanbanImportTask,
@@ -93,3 +93,34 @@ def test_import_kanban_manifest_raises_for_transport_error(monkeypatch: pytest.M
                 tasks=[KanbanImportTask(externalTaskKey="pf:pg:pg_123", prompt="Build the feature.")]
             ),
         )
+
+
+def test_list_kanban_workspaces_unwraps_projects_list(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_get(url: str, *, timeout: float) -> _Response:
+        assert url == "http://127.0.0.1:3000/api/trpc/projects.list"
+        assert timeout == 20.0
+        return _Response(
+            200,
+            {
+                "result": {
+                    "data": {
+                        "currentProjectId": "workspace-123",
+                        "projects": [
+                            {
+                                "id": "workspace-123",
+                                "name": "alpha",
+                                "path": "/tmp/alpha",
+                                "taskCounts": {"backlog": 1, "in_progress": 2, "review": 3, "trash": 4},
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+    monkeypatch.setattr("promptforge_services.kanban_client.httpx.get", fake_get)
+
+    result = list_kanban_workspaces(kanban_base_url="http://127.0.0.1:3000")
+    assert result.current_workspace_id == "workspace-123"
+    assert result.workspaces[0].workspace_id == "workspace-123"
+    assert result.workspaces[0].task_counts.in_progress == 2
