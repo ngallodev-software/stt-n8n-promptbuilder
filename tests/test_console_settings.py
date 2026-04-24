@@ -89,6 +89,7 @@ def test_console_settings_get_default_global_path(seeded_console_database_url: s
         "anthropicBaseUrl",
         "kanbanBaseUrl",
         "kanbanWorkspaceId",
+        "kanbanPasscode",
     }
     assert set(body["secrets"]) == {
         "OPENAI_API_KEY",
@@ -165,6 +166,14 @@ def test_console_settings_runtime_patch_validation_failures(seeded_console_datab
     )
     assert response.status_code == 400
     assert response.json()["detail"] == "invalid_kanbanWorkspaceId"
+
+    response = client.patch(
+        "/console/settings/runtime",
+        json={"scope": "global", "project_id": None, "runtime": {"kanbanPasscode": 7}},
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_kanbanPasscode"
 
 
 def test_console_settings_runtime_patch_allows_blank_webhook_url(
@@ -261,6 +270,7 @@ def test_console_settings_runtime_patch_persists_kanban_binding(
             "runtime": {
                 "kanbanBaseUrl": "http://127.0.0.1:3000",
                 "kanbanWorkspaceId": "workspace-123",
+                "kanbanPasscode": "abc12345",
             },
         },
         headers={"X-PromptForge-Role": "admin"},
@@ -269,6 +279,7 @@ def test_console_settings_runtime_patch_persists_kanban_binding(
     body = response.json()
     assert body["runtime"]["kanbanBaseUrl"] == "http://127.0.0.1:3000"
     assert body["runtime"]["kanbanWorkspaceId"] == "workspace-123"
+    assert body["runtime"]["kanbanPasscode"] == "abc12345"
 
     row = _fetch_one(
         seeded_console_database_url,
@@ -283,6 +294,20 @@ def test_console_settings_runtime_patch_persists_kanban_binding(
     )
     assert row["key"] == "kanbanWorkspaceId"
     assert row["value_json"] == "workspace-123"
+
+    passcode_row = _fetch_one(
+        seeded_console_database_url,
+        """
+        SELECT key, value_json
+        FROM console_runtime_settings
+        WHERE scope = 'project'
+          AND project_id = %s
+          AND key = 'kanbanPasscode'
+        """,
+        (PROJECT_ID,),
+    )
+    assert passcode_row["key"] == "kanbanPasscode"
+    assert passcode_row["value_json"] == "abc12345"
 
 
 def test_console_llm_assist_returns_structured_unsupported_response(

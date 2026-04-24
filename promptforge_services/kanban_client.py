@@ -62,6 +62,35 @@ def _unwrap_trpc_payload(value: Any) -> Any:
     return value
 
 
+def _is_auth_required_response(response: httpx.Response) -> bool:
+    if response.status_code != 401:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    detail = ""
+    if isinstance(payload, dict):
+        detail = str(payload.get("error") or payload.get("detail") or "")
+    return "Authentication required" in detail
+
+
+def _verify_passcode(
+    *,
+    client: httpx.Client,
+    base_url: str,
+    passcode: str,
+    timeout_seconds: float,
+) -> None:
+    response = client.post(
+        f"{base_url}/api/passcode/verify",
+        json={"passcode": passcode},
+        timeout=timeout_seconds,
+    )
+    if response.status_code != 200:
+        raise KanbanImportClientError(f"kanban_passcode_rejected:{response.status_code}")
+
+
 def _request_with_loopback_fallback(
     *,
     method: str,
@@ -70,6 +99,7 @@ def _request_with_loopback_fallback(
     timeout_seconds: float,
     headers: dict[str, str] | None = None,
     json_payload: object | None = None,
+    passcode: str | None = None,
 ) -> tuple[httpx.Response, str]:
     candidates = _candidate_base_urls(base_url)
     if not candidates:
@@ -78,14 +108,29 @@ def _request_with_loopback_fallback(
     last_error: httpx.HTTPError | None = None
     for candidate in candidates:
         try:
-            response = httpx.request(
-                method,
-                f"{candidate}{path}",
-                headers=headers,
-                json=json_payload,
-                timeout=timeout_seconds,
-            )
-            return response, candidate
+            with httpx.Client() as client:
+                response = client.request(
+                    method,
+                    f"{candidate}{path}",
+                    headers=headers,
+                    json=json_payload,
+                    timeout=timeout_seconds,
+                )
+                if _is_auth_required_response(response) and (passcode or "").strip():
+                    _verify_passcode(
+                        client=client,
+                        base_url=candidate,
+                        passcode=(passcode or "").strip(),
+                        timeout_seconds=timeout_seconds,
+                    )
+                    response = client.request(
+                        method,
+                        f"{candidate}{path}",
+                        headers=headers,
+                        json=json_payload,
+                        timeout=timeout_seconds,
+                    )
+                return response, candidate
         except httpx.HTTPError as exc:
             last_error = exc
 
@@ -117,6 +162,7 @@ def import_kanban_manifest(
         },
         json_payload=manifest.model_dump(by_alias=True, exclude_none=True),
         timeout_seconds=timeout_seconds,
+        passcode=binding.kanban_passcode,
     )
 
     payload = _unwrap_trpc_payload(response.json())
@@ -130,6 +176,7 @@ def import_kanban_manifest(
 def list_kanban_workspaces(
     *,
     kanban_base_url: str,
+    kanban_passcode: str | None = None,
     timeout_seconds: float = 20.0,
 ) -> KanbanWorkspaceDiscoveryResponse:
     base_url = kanban_base_url.rstrip("/")
@@ -141,6 +188,7 @@ def list_kanban_workspaces(
         base_url=base_url,
         path="/api/trpc/projects.list",
         timeout_seconds=timeout_seconds,
+        passcode=kanban_passcode,
     )
 
     payload = _unwrap_trpc_payload(response.json())

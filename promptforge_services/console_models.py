@@ -229,6 +229,7 @@ class ConsoleRuntimeSettings(StrictBaseModel):
     anthropicBaseUrl: str
     kanbanBaseUrl: str
     kanbanWorkspaceId: str
+    kanbanPasscode: str
     llmAssistEnabled: bool = False
 
 

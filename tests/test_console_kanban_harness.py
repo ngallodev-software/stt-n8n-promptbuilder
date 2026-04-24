@@ -50,6 +50,7 @@ def _settings_response() -> ConsoleSettingsResponse:
             anthropicBaseUrl="https://api.anthropic.com",
             kanbanBaseUrl="http://127.0.0.1:3484",
             kanbanWorkspaceId="workspace-123",
+            kanbanPasscode="S7szCrnW",
         ),
         secrets={},
         permissions=ConsoleSettingsPermissions(

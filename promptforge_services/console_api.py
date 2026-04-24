@@ -126,6 +126,7 @@ RUNTIME_SETTING_KEYS = (
     "anthropicBaseUrl",
     "kanbanBaseUrl",
     "kanbanWorkspaceId",
+    "kanbanPasscode",
 )
 SECRET_SETTING_KEYS = (
     "OPENAI_API_KEY",
@@ -284,6 +285,7 @@ def _default_runtime_settings() -> dict[str, Any]:
         "anthropicBaseUrl": llm.anthropic_base_url or "https://api.anthropic.com",
         "kanbanBaseUrl": watcher.kanban_base_url,
         "kanbanWorkspaceId": watcher.kanban_workspace_id,
+        "kanbanPasscode": watcher.kanban_passcode,
         "llmAssistEnabled": False,
     }
 
@@ -349,6 +351,15 @@ def _validate_optional_url(
     return _validate_url(name, text, allow_http=allow_http, allow_local_http=allow_local_http)
 
 
+def _validate_optional_string(name: str, value: Any, *, maximum: int = 2048) -> str:
+    if not isinstance(value, str):
+        raise raise_400(f"invalid_{name}")
+    text = value.strip()
+    if not text:
+        return ""
+    return _coerce_non_empty_string(name, text, maximum=maximum)
+
+
 def _normalize_runtime_update(runtime_patch: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(runtime_patch, dict) or not runtime_patch:
         raise raise_400("invalid_runtime")
@@ -378,6 +389,8 @@ def _normalize_runtime_update(runtime_patch: dict[str, Any]) -> dict[str, Any]:
             normalized[key] = _validate_url(key, value, allow_http=True)
         elif key == "kanbanWorkspaceId":
             normalized[key] = _coerce_non_empty_string(key, value, maximum=256)
+        elif key == "kanbanPasscode":
+            normalized[key] = _validate_optional_string(key, value, maximum=256)
     return normalized
 
 
@@ -1042,10 +1055,13 @@ def patch_console_runtime_settings(
 
 
 @router.get("/kanban/workspaces", response_model=KanbanWorkspaceDiscoveryResponse)
-def discover_kanban_workspaces(base_url: str) -> KanbanWorkspaceDiscoveryResponse:
+def discover_kanban_workspaces(base_url: str, passcode: str | None = None) -> KanbanWorkspaceDiscoveryResponse:
     normalized_base_url = _validate_url("kanbanBaseUrl", base_url, allow_http=True)
     try:
-        return list_kanban_workspaces(kanban_base_url=normalized_base_url)
+        return list_kanban_workspaces(
+            kanban_base_url=normalized_base_url,
+            kanban_passcode=_validate_optional_string("kanbanPasscode", passcode or "", maximum=256),
+        )
     except KanbanImportClientError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -3372,6 +3388,10 @@ def apply_prompt_to_kanban(prompt_generation_id: str) -> KanbanPromptApplyRespon
             binding=KanbanWorkspaceBinding(
                 kanbanBaseUrl=preview.kanban_base_url,
                 kanbanWorkspaceId=preview.kanban_workspace_id,
+                kanbanPasscode=_build_kanban_binding_for_prompt(
+                    database_url=database_url,
+                    project_id=preview.project_id,
+                ).kanban_passcode,
             ),
             manifest=preview.build.manifest,
         )

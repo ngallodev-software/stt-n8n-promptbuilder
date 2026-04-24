@@ -103,6 +103,9 @@ services:
       PROMPTFORGE_ERROR_FOLDER: ${PROMPTFORGE_ERROR_FOLDER:-Processing/Error}
       PROMPTFORGE_WEBHOOK_ENABLED: ${PROMPTFORGE_WEBHOOK_ENABLED:-false}
       PROMPTFORGE_N8N_WEBHOOK_URL: ${N8N_PROTOCOL}://n8n:${N8N_PORT}/webhook/promptforge-intake
+      # Kanban runs on the host, not in Docker.
+      # Inside this container, host.docker.internal is the host's localhost.
+      # That means a host Kanban at localhost:3484 is reachable here as host.docker.internal:3484.
       PROMPTFORGE_KANBAN_BASE_URL: ${PROMPTFORGE_KANBAN_BASE_URL:-http://host.docker.internal:3484}
       PROMPTFORGE_KANBAN_WORKSPACE_ID: ${PROMPTFORGE_KANBAN_WORKSPACE_ID:-}
       PROMPTFORGE_LLM_ENABLED: ${PROMPTFORGE_LLM_ENABLED:-false}
@@ -151,6 +154,7 @@ services:
       PROMPTFORGE_PROCESSED_FOLDER: ${PROMPTFORGE_PROCESSED_FOLDER:-Processed/Voice}
       PROMPTFORGE_ERROR_FOLDER: ${PROMPTFORGE_ERROR_FOLDER:-Processing/Error}
       PROMPTFORGE_N8N_WEBHOOK_URL: http://n8n:5678/webhook/promptforge-intake
+      # Same host-bridge rule for the watcher container.
       PROMPTFORGE_KANBAN_BASE_URL: ${PROMPTFORGE_KANBAN_BASE_URL:-http://host.docker.internal:3484}
       PROMPTFORGE_KANBAN_WORKSPACE_ID: ${PROMPTFORGE_KANBAN_WORKSPACE_ID:-}
       PROMPTFORGE_WEBHOOK_ENABLED: ${PROMPTFORGE_WEBHOOK_ENABLED:-true}

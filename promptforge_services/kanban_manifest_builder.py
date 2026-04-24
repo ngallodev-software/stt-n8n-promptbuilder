@@ -20,6 +20,7 @@ class KanbanManifestPreflightError(KanbanModel):
 class KanbanWorkspaceBinding(KanbanModel):
     kanban_base_url: str | None = Field(default=None, alias="kanbanBaseUrl")
     kanban_workspace_id: str | None = Field(default=None, alias="kanbanWorkspaceId")
+    kanban_passcode: str | None = Field(default=None, alias="kanbanPasscode")
 
 
 class KanbanImportTask(KanbanModel):
