@@ -282,8 +282,8 @@ def _default_runtime_settings() -> dict[str, Any]:
         "codexReasoningEffort": llm.codex_reasoning_effort,
         "openaiBaseUrl": llm.openai_base_url or "https://api.openai.com/v1",
         "anthropicBaseUrl": llm.anthropic_base_url or "https://api.anthropic.com",
-        "kanbanBaseUrl": "http://127.0.0.1:3000",
-        "kanbanWorkspaceId": "",
+        "kanbanBaseUrl": watcher.kanban_base_url,
+        "kanbanWorkspaceId": watcher.kanban_workspace_id,
         "llmAssistEnabled": False,
     }
 
@@ -566,6 +566,8 @@ def _build_settings_payload(
         for row in runtime_rows:
             key = str(row["key"])
             if key in runtime_values:
+                if key == "webhookUrl" and row["value_json"] == "":
+                    continue
                 runtime_values[key] = row["value_json"]
                 if isinstance(row.get("updated_at"), datetime):
                     updated_candidates.append(row["updated_at"])
@@ -975,6 +977,17 @@ def patch_console_runtime_settings(
         with psycopg.connect(database_url) as conn:
             with conn.cursor() as cur:
                 for key, value in normalized.items():
+                    if key == "webhookUrl" and value == "":
+                        cur.execute(
+                            """
+                            DELETE FROM console_runtime_settings
+                            WHERE scope = %s::pf_scope
+                              AND project_id IS NOT DISTINCT FROM %s
+                              AND key = %s
+                            """,
+                            (scope_value, project_value, key),
+                        )
+                        continue
                     cur.execute(
                         """
                         UPDATE console_runtime_settings

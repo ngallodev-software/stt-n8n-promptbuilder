@@ -48,7 +48,7 @@ def _settings_response() -> ConsoleSettingsResponse:
             codexReasoningEffort="medium",
             openaiBaseUrl="https://api.openai.com/v1",
             anthropicBaseUrl="https://api.anthropic.com",
-            kanbanBaseUrl="http://127.0.0.1:3000",
+            kanbanBaseUrl="http://127.0.0.1:3484",
             kanbanWorkspaceId="workspace-123",
         ),
         secrets={},
@@ -70,7 +70,7 @@ def test_preview_prompt_kanban_import(monkeypatch) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["promptGenerationId"] == "pg_123"
-    assert body["kanbanBaseUrl"] == "http://127.0.0.1:3000"
+    assert body["kanbanBaseUrl"] == "http://127.0.0.1:3484"
     assert body["kanbanWorkspaceId"] == "workspace-123"
     assert body["build"]["ok"] is True
     assert body["build"]["manifest"]["tasks"][0]["externalTaskKey"] == "pf:pg:pg_123"
@@ -135,7 +135,7 @@ def test_discover_kanban_workspaces(monkeypatch) -> None:
         },
     )
 
-    response = _client().get("/console/kanban/workspaces", params={"base_url": "http://127.0.0.1:3000"})
+    response = _client().get("/console/kanban/workspaces", params={"base_url": "http://127.0.0.1:3484"})
     assert response.status_code == 200
     body = response.json()
     assert body["currentWorkspaceId"] == "workspace-123"

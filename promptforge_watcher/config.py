@@ -15,6 +15,8 @@ class WatcherConfig(BaseModel):
         "true",
         "yes",
     }
+    kanban_base_url: str = os.getenv("PROMPTFORGE_KANBAN_BASE_URL", "http://127.0.0.1:3484")
+    kanban_workspace_id: str = os.getenv("PROMPTFORGE_KANBAN_WORKSPACE_ID", "")
     stabilization_seconds: float = Field(
         default=float(os.getenv("PROMPTFORGE_STABILIZATION_SECONDS", "0.5")),
         ge=0.0,

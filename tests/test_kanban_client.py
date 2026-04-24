@@ -23,7 +23,15 @@ class _Response:
 def test_import_kanban_manifest_unwraps_trpc_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
-    def fake_post(url: str, *, headers: dict[str, str], json: object, timeout: float) -> _Response:
+    def fake_request(
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json: object | None = None,
+        timeout: float,
+    ) -> _Response:
+        captured["method"] = method
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json
@@ -55,11 +63,11 @@ def test_import_kanban_manifest_unwraps_trpc_payload(monkeypatch: pytest.MonkeyP
             ],
         )
 
-    monkeypatch.setattr("promptforge_services.kanban_client.httpx.post", fake_post)
+    monkeypatch.setattr("promptforge_services.kanban_client.httpx.request", fake_request)
 
     result = import_kanban_manifest(
         binding=KanbanWorkspaceBinding(
-            kanbanBaseUrl="http://127.0.0.1:3000",
+            kanbanBaseUrl="http://127.0.0.1:3484",
             kanbanWorkspaceId="workspace-123",
         ),
         manifest=KanbanImportManifest(
@@ -67,7 +75,8 @@ def test_import_kanban_manifest_unwraps_trpc_payload(monkeypatch: pytest.MonkeyP
         ),
     )
 
-    assert captured["url"] == "http://127.0.0.1:3000/api/trpc/workspace.importTasks"
+    assert captured["method"] == "POST"
+    assert captured["url"] == "http://127.0.0.1:3484/api/trpc/workspace.importTasks"
     assert captured["headers"] == {
         "Content-Type": "application/json",
         "x-kanban-workspace-id": "workspace-123",
@@ -77,16 +86,57 @@ def test_import_kanban_manifest_unwraps_trpc_payload(monkeypatch: pytest.MonkeyP
     assert result.task_mappings[0].task_id == "task-1"
 
 
+def test_import_kanban_manifest_retries_loopback_host_for_containerized_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_urls: list[str] = []
+
+    def fake_request(
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json: object | None = None,
+        timeout: float,
+    ) -> _Response:
+        del method, headers, json, timeout
+        seen_urls.append(url)
+        if url.startswith("http://127.0.0.1:3484"):
+            raise httpx.ConnectError("boom")
+        return _Response(
+            200,
+            [{"result": {"data": {"json": {"version": "v1", "ok": True, "applied": True, "taskMappings": [], "linkResults": [], "startResults": []}}}}],
+        )
+
+    monkeypatch.setattr("promptforge_services.kanban_client.httpx.request", fake_request)
+
+    result = import_kanban_manifest(
+        binding=KanbanWorkspaceBinding(
+            kanbanBaseUrl="http://127.0.0.1:3484",
+            kanbanWorkspaceId="workspace-123",
+        ),
+        manifest=KanbanImportManifest(
+            tasks=[KanbanImportTask(externalTaskKey="pf:pg:pg_123", prompt="Build the feature.")]
+        ),
+    )
+
+    assert seen_urls == [
+        "http://127.0.0.1:3484/api/trpc/workspace.importTasks",
+        "http://host.docker.internal:3484/api/trpc/workspace.importTasks",
+    ]
+    assert result.ok is True
+
+
 def test_import_kanban_manifest_raises_for_transport_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_post(*args: object, **kwargs: object) -> _Response:
+    def fake_request(*args: object, **kwargs: object) -> _Response:
         raise httpx.ConnectError("boom")
 
-    monkeypatch.setattr("promptforge_services.kanban_client.httpx.post", fake_post)
+    monkeypatch.setattr("promptforge_services.kanban_client.httpx.request", fake_request)
 
-    with pytest.raises(KanbanImportClientError, match="kanban_transport_error"):
+    with pytest.raises(KanbanImportClientError, match="kanban_transport_error:ConnectError:tried="):
         import_kanban_manifest(
             binding=KanbanWorkspaceBinding(
-                kanbanBaseUrl="http://127.0.0.1:3000",
+                kanbanBaseUrl="http://127.0.0.1:3484",
                 kanbanWorkspaceId="workspace-123",
             ),
             manifest=KanbanImportManifest(
@@ -96,8 +146,16 @@ def test_import_kanban_manifest_raises_for_transport_error(monkeypatch: pytest.M
 
 
 def test_list_kanban_workspaces_unwraps_projects_list(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_get(url: str, *, timeout: float) -> _Response:
-        assert url == "http://127.0.0.1:3000/api/trpc/projects.list"
+    def fake_request(
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json: object | None = None,
+        timeout: float,
+    ) -> _Response:
+        del method, headers, json
+        assert url == "http://127.0.0.1:3484/api/trpc/projects.list"
         assert timeout == 20.0
         return _Response(
             200,
@@ -118,9 +176,38 @@ def test_list_kanban_workspaces_unwraps_projects_list(monkeypatch: pytest.Monkey
             },
         )
 
-    monkeypatch.setattr("promptforge_services.kanban_client.httpx.get", fake_get)
+    monkeypatch.setattr("promptforge_services.kanban_client.httpx.request", fake_request)
 
-    result = list_kanban_workspaces(kanban_base_url="http://127.0.0.1:3000")
+    result = list_kanban_workspaces(kanban_base_url="http://127.0.0.1:3484")
     assert result.current_workspace_id == "workspace-123"
     assert result.workspaces[0].workspace_id == "workspace-123"
     assert result.workspaces[0].task_counts.in_progress == 2
+
+
+def test_list_kanban_workspaces_retries_loopback_host_for_containerized_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen_urls: list[str] = []
+
+    def fake_request(
+        method: str,
+        url: str,
+        *,
+        headers: dict[str, str] | None = None,
+        json: object | None = None,
+        timeout: float,
+    ) -> _Response:
+        del method, headers, json, timeout
+        seen_urls.append(url)
+        if url.startswith("http://127.0.0.1:3484"):
+            raise httpx.ConnectError("boom")
+        return _Response(200, {"result": {"data": {"currentProjectId": None, "projects": []}}})
+
+    monkeypatch.setattr("promptforge_services.kanban_client.httpx.request", fake_request)
+
+    result = list_kanban_workspaces(kanban_base_url="http://127.0.0.1:3484")
+    assert seen_urls == [
+        "http://127.0.0.1:3484/api/trpc/projects.list",
+        "http://host.docker.internal:3484/api/trpc/projects.list",
+    ]
+    assert result.workspaces == []

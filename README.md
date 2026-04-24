@@ -204,6 +204,8 @@ Main watcher environment variables:
 - `PROMPTFORGE_ERROR_FOLDER` (default: `Processing/Error`): error folder contract.
 - `PROMPTFORGE_STABILIZATION_SECONDS` (default: `0.5`): debounce delay.
 - `PROMPTFORGE_N8N_WEBHOOK_URL` (default: `http://n8n:5678/webhook/promptforge-intake`): webhook destination.
+- `PROMPTFORGE_KANBAN_BASE_URL` (default: `http://host.docker.internal:3484` in Docker): default Kanban base URL used by the console harness.
+- `PROMPTFORGE_KANBAN_WORKSPACE_ID` (default: empty): optional default Kanban workspace binding.
 - `PROMPTFORGE_WEBHOOK_ENABLED` (default: `false`): enable webhook posting.
 
 ## n8n Workflow Assets
