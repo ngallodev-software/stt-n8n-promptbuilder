@@ -15,6 +15,13 @@ from pydantic import Field, ValidationError
 from psycopg.rows import dict_row
 
 from promptforge_services import console_queries as cq
+from promptforge_services.kanban_client import KanbanImportClientError, import_kanban_manifest
+from promptforge_services.kanban_manifest_builder import (
+    KanbanPromptApplyResponse,
+    KanbanPromptPreviewResponse,
+    KanbanWorkspaceBinding,
+    build_kanban_import_manifest,
+)
 from promptforge_services.console_models import (
     ConsoleRuntimePatchRequest,
     ConsoleRuntimeSettings,
@@ -116,6 +123,8 @@ RUNTIME_SETTING_KEYS = (
     "codexReasoningEffort",
     "openaiBaseUrl",
     "anthropicBaseUrl",
+    "kanbanBaseUrl",
+    "kanbanWorkspaceId",
 )
 SECRET_SETTING_KEYS = (
     "OPENAI_API_KEY",
@@ -272,6 +281,8 @@ def _default_runtime_settings() -> dict[str, Any]:
         "codexReasoningEffort": llm.codex_reasoning_effort,
         "openaiBaseUrl": llm.openai_base_url or "https://api.openai.com/v1",
         "anthropicBaseUrl": llm.anthropic_base_url or "https://api.anthropic.com",
+        "kanbanBaseUrl": "http://127.0.0.1:3000",
+        "kanbanWorkspaceId": "",
         "llmAssistEnabled": False,
     }
 
@@ -347,8 +358,10 @@ def _normalize_runtime_update(runtime_patch: dict[str, Any]) -> dict[str, Any]:
             if value not in {"low", "medium", "high"}:
                 raise raise_400(f"invalid_{key}")
             normalized[key] = value
-        elif key in {"openaiBaseUrl", "anthropicBaseUrl"}:
+        elif key in {"openaiBaseUrl", "anthropicBaseUrl", "kanbanBaseUrl"}:
             normalized[key] = _validate_url(key, value, allow_http=True)
+        elif key == "kanbanWorkspaceId":
+            normalized[key] = _coerce_non_empty_string(key, value, maximum=256)
     return normalized
 
 
@@ -1333,6 +1346,46 @@ def _fetch_delivery_target_row(database_url: str, target_id: str) -> dict[str, A
 
 def _fetch_prompt_generation_row(database_url: str, prompt_generation_id: str) -> dict[str, Any] | None:
     return cq.fetch_prompt_generation_by_id(database_url, prompt_generation_id)
+
+
+def _build_kanban_binding_for_prompt(
+    *,
+    database_url: str,
+    project_id: str | None,
+) -> KanbanWorkspaceBinding:
+    if not project_id:
+        raise raise_400("prompt_generation_project_scope_required")
+    settings = _build_settings_payload(
+        request=None,
+        scope=Scope.PROJECT.value,
+        project_id=project_id,
+        database_url=database_url,
+    )
+    return KanbanWorkspaceBinding.model_validate(settings.runtime.model_dump())
+
+
+def _build_prompt_generation_kanban_preview(
+    *,
+    database_url: str,
+    prompt_generation_id: str,
+) -> KanbanPromptPreviewResponse:
+    row = _fetch_prompt_generation_row(database_url, prompt_generation_id)
+    if not row:
+        raise raise_404("prompt_generation_not_found")
+    record = _prompt_generation_record(row)
+    binding = _build_kanban_binding_for_prompt(
+        database_url=database_url,
+        project_id=_as_optional_str(row.get("project_id")),
+    )
+    build = build_kanban_import_manifest(record, binding)
+    return KanbanPromptPreviewResponse(
+        promptGenerationId=record.id,
+        projectId=_as_optional_str(row.get("project_id")),
+        sourceStatus=record.status,
+        kanbanBaseUrl=binding.kanban_base_url,
+        kanbanWorkspaceId=binding.kanban_workspace_id,
+        build=build,
+    )
 
 
 def _fetch_delivery_row(database_url: str, delivery_id: str) -> dict[str, Any] | None:
@@ -3249,6 +3302,52 @@ def clone_prompt(prompt_generation_id: str) -> dict[str, Any]:
     if not rows:
         raise raise_404("prompt_generation_not_found")
     return {"ok": True, "newId": rows[0]["id"]}
+
+
+@router.get("/prompts/{prompt_generation_id}/kanban/preview", response_model=KanbanPromptPreviewResponse)
+def preview_prompt_kanban_import(prompt_generation_id: str) -> KanbanPromptPreviewResponse:
+    database_url = _require_db_url()
+    return _build_prompt_generation_kanban_preview(
+        database_url=database_url,
+        prompt_generation_id=prompt_generation_id,
+    )
+
+
+@router.post("/prompts/{prompt_generation_id}/kanban/apply", response_model=KanbanPromptApplyResponse)
+def apply_prompt_to_kanban(prompt_generation_id: str) -> KanbanPromptApplyResponse:
+    database_url = _require_db_url()
+    preview = _build_prompt_generation_kanban_preview(
+        database_url=database_url,
+        prompt_generation_id=prompt_generation_id,
+    )
+    if not preview.build.ok or preview.build.manifest is None:
+        return KanbanPromptApplyResponse(
+            promptGenerationId=preview.prompt_generation_id,
+            projectId=preview.project_id,
+            kanbanBaseUrl=preview.kanban_base_url,
+            kanbanWorkspaceId=preview.kanban_workspace_id,
+            manifest=preview.build.manifest,
+            preflightErrors=preview.build.errors,
+        )
+    try:
+        result = import_kanban_manifest(
+            binding=KanbanWorkspaceBinding(
+                kanbanBaseUrl=preview.kanban_base_url,
+                kanbanWorkspaceId=preview.kanban_workspace_id,
+            ),
+            manifest=preview.build.manifest,
+        )
+    except KanbanImportClientError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return KanbanPromptApplyResponse(
+        promptGenerationId=preview.prompt_generation_id,
+        projectId=preview.project_id,
+        kanbanBaseUrl=preview.kanban_base_url,
+        kanbanWorkspaceId=preview.kanban_workspace_id,
+        manifest=preview.build.manifest,
+        result=result,
+        preflightErrors=[],
+    )
 
 
 @router.patch("/prompts/{prompt_generation_id}/priority")

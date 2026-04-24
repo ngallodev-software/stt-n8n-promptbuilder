@@ -89,6 +89,8 @@ def test_console_settings_get_default_global_path(seeded_console_database_url: s
         "codexReasoningEffort",
         "openaiBaseUrl",
         "anthropicBaseUrl",
+        "kanbanBaseUrl",
+        "kanbanWorkspaceId",
     }
     assert set(body["secrets"]) == {
         "OPENAI_API_KEY",
@@ -158,6 +160,14 @@ def test_console_settings_runtime_patch_validation_failures(seeded_console_datab
     assert response.status_code == 400
     assert response.json()["detail"] == "invalid_webhookUrl"
 
+    response = client.patch(
+        "/console/settings/runtime",
+        json={"scope": "global", "project_id": None, "runtime": {"kanbanWorkspaceId": "   "}},
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_kanbanWorkspaceId"
+
 
 def test_console_settings_runtime_patch_bootstraps_missing_settings_tables(
     seeded_console_database_url: str,
@@ -189,6 +199,42 @@ def test_console_settings_runtime_patch_bootstraps_missing_settings_tables(
     )
     assert row["key"] == "llmMode"
     assert row["value_json"] == "deterministic_only"
+
+
+def test_console_settings_runtime_patch_persists_kanban_binding(
+    seeded_console_database_url: str,
+) -> None:
+    client = _client()
+    response = client.patch(
+        "/console/settings/runtime",
+        json={
+            "scope": "project",
+            "project_id": PROJECT_ID,
+            "runtime": {
+                "kanbanBaseUrl": "http://127.0.0.1:3000",
+                "kanbanWorkspaceId": "workspace-123",
+            },
+        },
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runtime"]["kanbanBaseUrl"] == "http://127.0.0.1:3000"
+    assert body["runtime"]["kanbanWorkspaceId"] == "workspace-123"
+
+    row = _fetch_one(
+        seeded_console_database_url,
+        """
+        SELECT key, value_json
+        FROM console_runtime_settings
+        WHERE scope = 'project'
+          AND project_id = %s
+          AND key = 'kanbanWorkspaceId'
+        """,
+        (PROJECT_ID,),
+    )
+    assert row["key"] == "kanbanWorkspaceId"
+    assert row["value_json"] == "workspace-123"
 
 
 def test_console_llm_assist_returns_structured_unsupported_response(

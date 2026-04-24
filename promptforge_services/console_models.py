@@ -227,6 +227,8 @@ class ConsoleRuntimeSettings(StrictBaseModel):
     codexReasoningEffort: CodexReasoningEffort
     openaiBaseUrl: str
     anthropicBaseUrl: str
+    kanbanBaseUrl: str
+    kanbanWorkspaceId: str
     llmAssistEnabled: bool = False
 
 
