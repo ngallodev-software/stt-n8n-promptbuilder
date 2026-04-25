@@ -23,10 +23,12 @@ from promptforge_services.pipeline import (
 )
 from promptforge_watcher.config import WatcherConfig
 from promptforge_watcher.delivery import dispatch_delivery
-from promptforge_watcher.models import EligibilityResult, ImportBundle, ImportResult, ParsedNote
+from promptforge_watcher.models import EligibilityResult, ImportBundle, ImportResult, ParsedNote, RouteMetadata
 from promptforge_watcher.repository import WatcherRepository, build_repository
 from promptforge_watcher.webhook import build_webhook_payload, post_webhook
 from promptforge_watcher.writeback import write_back_note
+
+SUPPORTED_ROUTE_FAMILIES = {"kanban", "queue", "review"}
 
 
 def run() -> None:
@@ -144,7 +146,7 @@ def _process_note_path(
     if not _is_processable_markdown_path(note_path):
         return
 
-    note = load_note(note_path, Path(cfg.vault_path))
+    note = load_note(note_path, Path(cfg.vault_path), cfg.watch_folder)
     known_hash = seen_hashes.get(note.relative_path)
     if known_hash == note.note_hash:
         print(f"- skipped ({source}): {note.relative_path} (unchanged_hash)")
@@ -160,6 +162,10 @@ def _process_note_path(
             watch_prefix = f"{_normalize_watch_folder(cfg.watch_folder)}/"
             print(f"  detail: relative_path={note.relative_path!r} expected_prefix={watch_prefix!r}")
         return
+
+    if note.route.route_status == "unsupported":
+        print(f"  route: unsupported ({note.route.route_note or 'unsupported_route_family'})")
+        print(f"  route_detail: {note.route.route_family or 'unknown'} @ {note.route.route_path or 'Inbox/Voice'}")
 
     bundle = _build_import_bundle(note)
     result = import_note(
@@ -271,10 +277,11 @@ class _VaultEventHandler(FileSystemEventHandler):
         self.on_change(path)
 
 
-def load_note(note_path: Path, vault_path: Path) -> ParsedNote:
+def load_note(note_path: Path, vault_path: Path, watch_folder: str = "Inbox/Voice") -> ParsedNote:
     raw_text = note_path.read_text(encoding="utf-8")
     frontmatter, body_markdown = _split_frontmatter(raw_text)
     control_text, transcript_text = _extract_sections(body_markdown)
+    route = _parse_route_metadata(note_path.relative_to(vault_path).as_posix(), watch_folder)
 
     if "## Control" not in body_markdown:
         raise ValueError("missing_section:Control")
@@ -292,6 +299,60 @@ def load_note(note_path: Path, vault_path: Path) -> ParsedNote:
         control_text=control_text,
         transcript_text=transcript_text,
         note_hash=note_hash,
+        route=route,
+    )
+
+
+def _parse_route_metadata(relative_path: str, watch_folder: str) -> RouteMetadata:
+    normalized_watch_folder = _normalize_watch_folder(watch_folder)
+    source_parts = Path(relative_path).parts
+    watch_parts = Path(normalized_watch_folder).parts
+    if len(source_parts) <= len(watch_parts) or tuple(source_parts[: len(watch_parts)]) != watch_parts:
+        return RouteMetadata(
+            source_relative_path=relative_path,
+            watch_root=normalized_watch_folder,
+            route_status="unsupported",
+            route_note="outside_watch_folder",
+        )
+
+    route_parts = list(source_parts[len(watch_parts) : -1])
+    route_path = "/".join(route_parts)
+    if not route_parts:
+        return RouteMetadata(
+            source_relative_path=relative_path,
+            watch_root=normalized_watch_folder,
+            route_path="",
+            route_status="unsupported",
+            route_note="missing_route_family",
+        )
+
+    route_family = route_parts[0]
+    if route_family in {"queue", "review"}:
+        route_target = None
+        route_context = route_parts[1:]
+    else:
+        route_target = route_parts[1] if len(route_parts) > 1 else None
+        route_context = route_parts[2:] if len(route_parts) > 2 else []
+    if route_family not in SUPPORTED_ROUTE_FAMILIES:
+        return RouteMetadata(
+            source_relative_path=relative_path,
+            watch_root=normalized_watch_folder,
+            route_path=route_path,
+            route_family=route_family,
+            route_target=route_target,
+            route_context=route_context,
+            route_status="unsupported",
+            route_note="unsupported_route_family",
+        )
+
+    return RouteMetadata(
+        source_relative_path=relative_path,
+        watch_root=normalized_watch_folder,
+        route_path=route_path,
+        route_family=route_family,
+        route_target=route_target,
+        route_context=route_context,
+        route_status="recognized",
     )
 
 
@@ -327,7 +388,12 @@ def _preprocess_payload(note: ParsedNote):
 
 
 def _build_import_bundle(note: ParsedNote) -> ImportBundle:
-    preprocess = preprocess_request(payload=_preprocess_payload(note))
+    frontmatter = {
+        **note.frontmatter,
+        "promptforge_route": note.route.model_dump(),
+    }
+    routed_note = note.model_copy(update={"frontmatter": frontmatter})
+    preprocess = preprocess_request(payload=_preprocess_payload(routed_note))
     render = render_request(
         RenderRequest(
             contract_name="agent_task_v1",
@@ -359,10 +425,10 @@ def _build_import_bundle(note: ParsedNote) -> ImportBundle:
         PrepareDeliveryRequest(
             contract_name="agent_task_v1",
             payload=render.payload.model_dump(),
-            priority=str(note.frontmatter.get("priority", "normal")),
+            priority=str(routed_note.frontmatter.get("priority", "normal")),
         )
     )
-    return ImportBundle(note=note, preprocess=preprocess, render=render, delivery=delivery, llm_runs=llm_runs)
+    return ImportBundle(note=routed_note, preprocess=preprocess, render=render, delivery=delivery, llm_runs=llm_runs)
 
 
 def _split_frontmatter(raw_text: str) -> tuple[dict, str]:

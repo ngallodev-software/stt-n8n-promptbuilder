@@ -213,6 +213,7 @@ CREATE TABLE IF NOT EXISTS intake_notes (
     status pf_note_status NOT NULL DEFAULT 'new',
     watch_eligible BOOLEAN NOT NULL DEFAULT TRUE,
     source_device TEXT NOT NULL DEFAULT 'windows-main',
+    route_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     last_error TEXT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT chk_intake_notes_title_nonempty CHECK (length(trim(note_title)) > 0),

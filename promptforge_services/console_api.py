@@ -677,7 +677,10 @@ def _build_logs(
                 "utterance_id": None,
                 "prompt_generation_id": None,
                 "delivery_id": None,
-                "fields": {"path": note.get("note_relative_path")},
+                "fields": {
+                    "path": note.get("note_relative_path"),
+                    "route": note.get("route_json") or {},
+                },
             }
         )
     out.sort(key=lambda row: row["timestamp"], reverse=True)

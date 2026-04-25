@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 import pytest
+import psycopg
 from fastapi import HTTPException
 
 from promptforge_services.console_api import (
@@ -210,10 +213,33 @@ def test_console_intake_happy_path_and_filters(seeded_console_database_url: str)
 
 
 def test_console_intake_detail_and_not_found(seeded_console_database_url: str) -> None:
-    del seeded_console_database_url
+    with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
+        conn.execute(
+            """
+            UPDATE intake_notes
+            SET route_json = %s::jsonb
+            WHERE id = %s
+            """,
+            (
+                json.dumps(
+                    {
+                        "source_relative_path": "Inbox/Voice/kanban/prompt-forge/success-note.md",
+                        "watch_root": "Inbox/Voice",
+                        "route_path": "kanban/prompt-forge",
+                        "route_family": "kanban",
+                        "route_target": "prompt-forge",
+                        "route_context": [],
+                        "route_status": "recognized",
+                    }
+                ),
+                SUCCESS_NOTE_ID,
+            ),
+        )
     body = _as_dict(get_intake_note(SUCCESS_NOTE_ID))
     assert body["note"]["id"] == SUCCESS_NOTE_ID
     assert body["note"]["status"] == "processed"
+    assert body["note"]["metadata_json"]["route"]["route_family"] == "kanban"
+    assert body["note"]["metadata_json"]["route"]["route_target"] == "prompt-forge"
 
     with pytest.raises(HTTPException) as exc_info:
         get_intake_note("00000000-0000-4000-8000-000000000000")
