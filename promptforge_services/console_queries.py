@@ -73,9 +73,15 @@ def fetch_intake_notes(
             COALESCE(body_markdown, '') AS body_text,
             COALESCE(frontmatter_json, '{{}}'::jsonb) AS frontmatter_original,
             COALESCE(frontmatter_json, '{{}}'::jsonb) AS frontmatter_current,
+            COALESCE(route_json, '{{}}'::jsonb) AS route_json,
             CASE
-                WHEN last_error IS NULL THEN '{{}}'::jsonb
-                ELSE jsonb_build_object('last_error', last_error)
+                WHEN last_error IS NULL AND COALESCE(route_json, '{{}}'::jsonb) = '{{}}'::jsonb THEN '{{}}'::jsonb
+                ELSE jsonb_strip_nulls(
+                    jsonb_build_object(
+                        'last_error', last_error,
+                        'route', COALESCE(route_json, '{{}}'::jsonb)
+                    )
+                )
             END AS metadata_json,
             created_at,
             COALESCE(imported_at, created_at) AS updated_at
@@ -103,9 +109,15 @@ def fetch_intake_note(database_url: str, note_id: str) -> dict[str, Any] | None:
             COALESCE(body_markdown, '') AS body_text,
             COALESCE(frontmatter_json, '{}'::jsonb) AS frontmatter_original,
             COALESCE(frontmatter_json, '{}'::jsonb) AS frontmatter_current,
+            COALESCE(route_json, '{}'::jsonb) AS route_json,
             CASE
-                WHEN last_error IS NULL THEN '{}'::jsonb
-                ELSE jsonb_build_object('last_error', last_error)
+                WHEN last_error IS NULL AND COALESCE(route_json, '{}'::jsonb) = '{}'::jsonb THEN '{}'::jsonb
+                ELSE jsonb_strip_nulls(
+                    jsonb_build_object(
+                        'last_error', last_error,
+                        'route', COALESCE(route_json, '{}'::jsonb)
+                    )
+                )
             END AS metadata_json,
             created_at,
             COALESCE(imported_at, created_at) AS updated_at
@@ -681,6 +693,7 @@ def fetch_log_sources(
                 id,
                 status::text AS status,
                 note_relative_path,
+                COALESCE(route_json, '{}'::jsonb) AS route_json,
                 created_at,
                 COALESCE(imported_at, created_at) AS updated_at
             FROM intake_notes
@@ -754,6 +767,7 @@ def fetch_log_sources(
             id,
             status::text AS status,
             note_relative_path,
+            COALESCE(route_json, '{}'::jsonb) AS route_json,
             created_at,
             COALESCE(imported_at, created_at) AS updated_at
         FROM intake_notes

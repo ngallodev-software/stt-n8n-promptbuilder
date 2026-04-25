@@ -7,6 +7,17 @@ from pydantic import BaseModel, Field
 from promptforge_services.models import PrepareDeliveryResponse, PreprocessResponse, RenderResponse
 
 
+class RouteMetadata(BaseModel):
+    source_relative_path: str
+    watch_root: str = "Inbox/Voice"
+    route_path: str = ""
+    route_family: str | None = None
+    route_target: str | None = None
+    route_context: list[str] = Field(default_factory=list)
+    route_status: Literal["default", "recognized", "unsupported"] = "default"
+    route_note: str | None = None
+
+
 class ParsedNote(BaseModel):
     vault_path: str
     relative_path: str
@@ -16,6 +27,7 @@ class ParsedNote(BaseModel):
     control_text: str | None
     transcript_text: str | None
     note_hash: str
+    route: RouteMetadata
 
 
 class EligibilityResult(BaseModel):
@@ -27,7 +39,8 @@ class StoredIntakeNote(BaseModel):
     id: str
     note_relative_path: str
     note_hash: str
-    status: Literal["imported", "skipped"]
+    status: Literal["imported", "skipped", "error"]
+    route_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class StoredUtterance(BaseModel):

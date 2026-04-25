@@ -50,7 +50,26 @@ class InMemoryWatcherRepository(WatcherRepository):
             note_relative_path=bundle.note.relative_path,
             note_hash=bundle.note.note_hash,
             status="imported",
+            route_json=bundle.note.route.model_dump(),
         )
+        if bundle.note.route.route_status == "unsupported":
+            intake_note = intake_note.model_copy(update={"status": "error"})
+            self._notes_by_path[bundle.note.relative_path] = intake_note
+            self.imported_rows.append(
+                {
+                    "intake_note": intake_note.model_dump(),
+                    "route": bundle.note.route.model_dump(),
+                    "skipped_reason": "unsupported_route_family",
+                    "preprocess_response": bundle.preprocess,
+                    "render_response": bundle.render,
+                    "delivery_response": bundle.delivery,
+                }
+            )
+            return ImportResult(
+                imported=False,
+                skipped_reason="unsupported_route_family",
+                intake_note=intake_note,
+            )
         utterance = StoredUtterance(
             id=_uuid(),
             intake_note_id=intake_note.id,
@@ -76,6 +95,7 @@ class InMemoryWatcherRepository(WatcherRepository):
         self.imported_rows.append(
             {
                 "intake_note": intake_note.model_dump(),
+                "route": bundle.note.route.model_dump(),
                 "utterance": utterance.model_dump(),
                 "prompt_generation": prompt_generation.model_dump(),
                 "delivery": delivery.model_dump(),
@@ -138,6 +158,7 @@ class PostgresWatcherRepository(WatcherRepository):
                             note_relative_path=bundle.note.relative_path,
                             note_hash=bundle.note.note_hash,
                             status="skipped",
+                            route_json=bundle.note.route.model_dump(),
                         ),
                     )
 
@@ -152,10 +173,11 @@ class PostgresWatcherRepository(WatcherRepository):
                     """
                     INSERT INTO intake_notes (
                         id, vault_path, note_relative_path, note_title, note_hash, imported_at,
-                        frontmatter_json, body_markdown, project_id, status, watch_eligible, source_device
+                        frontmatter_json, body_markdown, project_id, status, watch_eligible, source_device,
+                        last_error
                     ) VALUES (
                         %s, %s, %s, %s, %s, now(),
-                        %s::jsonb, %s, %s, 'imported', %s, %s
+                        %s::jsonb, %s, %s, %s, %s, %s, %s
                     )
                     """,
                     (
@@ -167,10 +189,25 @@ class PostgresWatcherRepository(WatcherRepository):
                         json.dumps(bundle.note.frontmatter),
                         bundle.note.body_markdown,
                         project_id,
+                        "error" if bundle.note.route.route_status == "unsupported" else "imported",
                         bool(bundle.note.frontmatter.get("watch_eligible", True)),
                         str(bundle.note.frontmatter.get("source_device", "windows-main")),
+                        "unsupported_route_family" if bundle.note.route.route_status == "unsupported" else None,
                     ),
                 )
+                if bundle.note.route.route_status == "unsupported":
+                    conn.commit()
+                    return ImportResult(
+                        imported=False,
+                        skipped_reason="unsupported_route_family",
+                        intake_note=StoredIntakeNote(
+                            id=intake_note_id,
+                            note_relative_path=bundle.note.relative_path,
+                            note_hash=bundle.note.note_hash,
+                            status="error",
+                            route_json=bundle.note.route.model_dump(),
+                        ),
+                    )
                 cur.execute(
                     """
                     INSERT INTO utterances (
@@ -299,6 +336,7 @@ class PostgresWatcherRepository(WatcherRepository):
                 note_relative_path=bundle.note.relative_path,
                 note_hash=bundle.note.note_hash,
                 status="imported",
+                route_json=bundle.note.route.model_dump(),
             ),
             utterance=StoredUtterance(
                 id=utterance_id,

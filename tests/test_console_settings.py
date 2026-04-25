@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
-
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
@@ -89,6 +87,9 @@ def test_console_settings_get_default_global_path(seeded_console_database_url: s
         "codexReasoningEffort",
         "openaiBaseUrl",
         "anthropicBaseUrl",
+        "kanbanBaseUrl",
+        "kanbanWorkspaceId",
+        "kanbanPasscode",
     }
     assert set(body["secrets"]) == {
         "OPENAI_API_KEY",
@@ -158,6 +159,72 @@ def test_console_settings_runtime_patch_validation_failures(seeded_console_datab
     assert response.status_code == 400
     assert response.json()["detail"] == "invalid_webhookUrl"
 
+    response = client.patch(
+        "/console/settings/runtime",
+        json={"scope": "global", "project_id": None, "runtime": {"kanbanWorkspaceId": "   "}},
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_kanbanWorkspaceId"
+
+    response = client.patch(
+        "/console/settings/runtime",
+        json={"scope": "global", "project_id": None, "runtime": {"kanbanPasscode": 7}},
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid_kanbanPasscode"
+
+
+def test_console_settings_runtime_patch_allows_blank_webhook_url(
+    seeded_console_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROMPTFORGE_N8N_WEBHOOK_URL", "http://n8n:5678/webhook/promptforge-intake")
+    client = _client()
+    response = client.patch(
+        "/console/settings/runtime",
+        json={"scope": "global", "project_id": None, "runtime": {"webhookUrl": ""}},
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 200
+    assert response.json()["runtime"]["webhookUrl"] == "http://n8n:5678/webhook/promptforge-intake"
+    row = _fetch_one(
+        seeded_console_database_url,
+        """
+        SELECT key, value_json
+        FROM console_runtime_settings
+        WHERE scope = 'global'
+          AND project_id IS NULL
+          AND key = 'webhookUrl'
+        """,
+    )
+    assert row == {}
+
+
+def test_console_settings_blank_webhook_override_falls_back_to_default(
+    seeded_console_database_url: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("PROMPTFORGE_N8N_WEBHOOK_URL", "http://n8n:5678/webhook/promptforge-intake")
+    with psycopg.connect(seeded_console_database_url, autocommit=True) as conn:
+        conn.execute(
+            """
+            INSERT INTO console_runtime_settings (scope, project_id, key, value_json, updated_by_user_id)
+            VALUES ('project', %s, 'webhookUrl', '""'::jsonb, 'tester')
+            """,
+            (PROJECT_ID,),
+        )
+
+    client = _client()
+    response = client.get(
+        "/console/settings",
+        params={"scope": "project", "project_id": PROJECT_ID},
+        headers={"X-PromptForge-Role": "operator"},
+    )
+    assert response.status_code == 200
+    assert response.json()["runtime"]["webhookUrl"] == "http://n8n:5678/webhook/promptforge-intake"
+
 
 def test_console_settings_runtime_patch_bootstraps_missing_settings_tables(
     seeded_console_database_url: str,
@@ -189,6 +256,58 @@ def test_console_settings_runtime_patch_bootstraps_missing_settings_tables(
     )
     assert row["key"] == "llmMode"
     assert row["value_json"] == "deterministic_only"
+
+
+def test_console_settings_runtime_patch_persists_kanban_binding(
+    seeded_console_database_url: str,
+) -> None:
+    client = _client()
+    response = client.patch(
+        "/console/settings/runtime",
+        json={
+            "scope": "project",
+            "project_id": PROJECT_ID,
+            "runtime": {
+                "kanbanBaseUrl": "http://127.0.0.1:3000",
+                "kanbanWorkspaceId": "workspace-123",
+                "kanbanPasscode": "abc12345",
+            },
+        },
+        headers={"X-PromptForge-Role": "admin"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["runtime"]["kanbanBaseUrl"] == "http://127.0.0.1:3000"
+    assert body["runtime"]["kanbanWorkspaceId"] == "workspace-123"
+    assert body["runtime"]["kanbanPasscode"] == "abc12345"
+
+    row = _fetch_one(
+        seeded_console_database_url,
+        """
+        SELECT key, value_json
+        FROM console_runtime_settings
+        WHERE scope = 'project'
+          AND project_id = %s
+          AND key = 'kanbanWorkspaceId'
+        """,
+        (PROJECT_ID,),
+    )
+    assert row["key"] == "kanbanWorkspaceId"
+    assert row["value_json"] == "workspace-123"
+
+    passcode_row = _fetch_one(
+        seeded_console_database_url,
+        """
+        SELECT key, value_json
+        FROM console_runtime_settings
+        WHERE scope = 'project'
+          AND project_id = %s
+          AND key = 'kanbanPasscode'
+        """,
+        (PROJECT_ID,),
+    )
+    assert passcode_row["key"] == "kanbanPasscode"
+    assert passcode_row["value_json"] == "abc12345"
 
 
 def test_console_llm_assist_returns_structured_unsupported_response(

@@ -116,10 +116,42 @@ class WatcherTests(unittest.TestCase):
 
             self.assertEqual(parsed.vault_path, str(vault_path))
             self.assertEqual(parsed.relative_path, "Inbox/Voice/retry-state-plan.md")
+            self.assertEqual(parsed.route.route_status, "unsupported")
+            self.assertEqual(parsed.route.route_note, "missing_route_family")
             self.assertEqual(parsed.frontmatter["project"], "inbox")
             self.assertIn("project is thtaxmachine", parsed.control_text or "")
             self.assertTrue((parsed.transcript_text or "").startswith("um figure out"))
             self.assertEqual(len(parsed.note_hash), 64)
+
+    def test_load_note_marks_unknown_route_family_unsupported(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault_path = Path(tmpdir)
+            note_path = vault_path / "Inbox" / "Voice" / "spaceship" / "prompt-forge" / "note.md"
+            note_path.parent.mkdir(parents=True)
+            note_path.write_text(SEED_NOTE, encoding="utf-8")
+
+            parsed = load_note(note_path, vault_path)
+
+            self.assertEqual(parsed.route.route_status, "unsupported")
+            self.assertEqual(parsed.route.route_family, "spaceship")
+            self.assertEqual(parsed.route.route_target, "prompt-forge")
+            self.assertEqual(parsed.route.route_context, [])
+            self.assertEqual(parsed.route.route_path, "spaceship/prompt-forge")
+            self.assertEqual(parsed.route.route_note, "unsupported_route_family")
+
+    def test_load_note_marks_queue_route_supported_without_workspace_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault_path = Path(tmpdir)
+            note_path = vault_path / "Inbox" / "Voice" / "queue" / "triage" / "retry-state-plan.md"
+            note_path.parent.mkdir(parents=True)
+            note_path.write_text(SEED_NOTE, encoding="utf-8")
+
+            parsed = load_note(note_path, vault_path)
+
+            self.assertEqual(parsed.route.route_status, "recognized")
+            self.assertEqual(parsed.route.route_family, "queue")
+            self.assertIsNone(parsed.route.route_target)
+            self.assertEqual(parsed.route.route_context, ["triage"])
 
     def test_eligibility_accepts_seeded_note(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -150,7 +182,38 @@ class WatcherTests(unittest.TestCase):
     def test_import_note_persists_bundle_in_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             vault_path = Path(tmpdir)
-            note_path = vault_path / "Inbox" / "Voice" / "retry-state-plan.md"
+            note_path = vault_path / "Inbox" / "Voice" / "kanban" / "prompt-forge" / "research" / "retry-state-plan.md"
+            note_path.parent.mkdir(parents=True)
+            note_path.write_text(SEED_NOTE, encoding="utf-8")
+
+            parsed = load_note(note_path, vault_path)
+            repository = InMemoryWatcherRepository()
+            bundle = _build_import_bundle(parsed)
+
+            result = import_note(
+                parsed,
+                repository=repository,
+                webhook_url="http://example.invalid/webhook",
+                webhook_enabled=False,
+                bundle=bundle,
+            )
+
+            self.assertTrue(result.imported)
+            self.assertIsNotNone(result.intake_note)
+            self.assertIsNotNone(result.prompt_generation)
+            self.assertIsNotNone(result.delivery)
+            self.assertEqual(result.delivery.target_identifier, "claude-tax-main")
+            self.assertEqual(len(repository.imported_rows), 1)
+            self.assertEqual(repository.imported_rows[0]["llm_runs"], [])
+            self.assertEqual(repository.imported_rows[0]["route"]["route_family"], "kanban")
+            self.assertEqual(repository.imported_rows[0]["route"]["route_target"], "prompt-forge")
+            self.assertEqual(repository.imported_rows[0]["route"]["route_context"], ["research"])
+            self.assertEqual(repository.imported_rows[0]["route"]["route_path"], "kanban/prompt-forge/research")
+
+    def test_import_note_rejects_unknown_route_family_and_retains_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            vault_path = Path(tmpdir)
+            note_path = vault_path / "Inbox" / "Voice" / "spaceship" / "prompt-forge" / "retry-state-plan.md"
             note_path.parent.mkdir(parents=True)
             note_path.write_text(SEED_NOTE, encoding="utf-8")
 
@@ -164,13 +227,13 @@ class WatcherTests(unittest.TestCase):
                 webhook_enabled=False,
             )
 
-            self.assertTrue(result.imported)
+            self.assertFalse(result.imported)
+            self.assertEqual(result.skipped_reason, "unsupported_route_family")
             self.assertIsNotNone(result.intake_note)
-            self.assertIsNotNone(result.prompt_generation)
-            self.assertIsNotNone(result.delivery)
-            self.assertEqual(result.delivery.target_identifier, "claude-tax-main")
-            self.assertEqual(len(repository.imported_rows), 1)
-            self.assertEqual(repository.imported_rows[0]["llm_runs"], [])
+            self.assertEqual(result.intake_note.status, "error")
+            self.assertEqual(result.intake_note.route_json["route_family"], "spaceship")
+            self.assertEqual(repository.imported_rows[0]["skipped_reason"], "unsupported_route_family")
+            self.assertEqual(repository.imported_rows[0]["route"]["route_target"], "prompt-forge")
 
     def test_import_note_persists_optional_llm_runs_in_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
