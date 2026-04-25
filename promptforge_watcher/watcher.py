@@ -25,10 +25,11 @@ from promptforge_watcher.config import WatcherConfig
 from promptforge_watcher.delivery import dispatch_delivery
 from promptforge_watcher.models import EligibilityResult, ImportBundle, ImportResult, ParsedNote, RouteMetadata
 from promptforge_watcher.repository import WatcherRepository, build_repository
+from promptforge_watcher.routing import RouteFamily
 from promptforge_watcher.webhook import build_webhook_payload, post_webhook
 from promptforge_watcher.writeback import write_back_note
 
-SUPPORTED_ROUTE_FAMILIES = {"kanban", "queue", "review"}
+SUPPORTED_ROUTE_FAMILIES = {family.value for family in RouteFamily}
 
 
 def run() -> None:

@@ -1,12 +1,21 @@
 from __future__ import annotations
 
+from enum import Enum
 from pathlib import PurePosixPath
-from typing import Any, Literal
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 VOICE_ROUTE_ROOT = "Inbox/Voice"
-KNOWN_ROUTE_FAMILIES = {"kanban", "queue", "review"}
+
+
+class RouteFamily(str, Enum):
+    KANBAN = "kanban"
+    QUEUE = "queue"
+    REVIEW = "review"
+
+
+KNOWN_ROUTE_FAMILIES = {family.value for family in RouteFamily}
 
 
 class VoiceRouteResolution(BaseModel):

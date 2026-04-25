@@ -1066,7 +1066,7 @@ def discover_kanban_workspaces(base_url: str, passcode: str | None = None) -> Ka
             kanban_passcode=_validate_optional_string("kanbanPasscode", passcode or "", maximum=256),
         )
     except KanbanImportClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
 
 
@@ -3399,7 +3399,7 @@ def apply_prompt_to_kanban(prompt_generation_id: str) -> KanbanPromptApplyRespon
             manifest=preview.build.manifest,
         )
     except KanbanImportClientError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     return KanbanPromptApplyResponse(
         promptGenerationId=preview.prompt_generation_id,
         projectId=preview.project_id,

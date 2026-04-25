@@ -14,7 +14,32 @@ from promptforge_services.console_models import KanbanWorkspaceDiscoveryResponse
 
 
 class KanbanImportClientError(RuntimeError):
-    pass
+    """Base class for Kanban client errors."""
+
+    def __init__(self, message: str, status_code: int = 502) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class KanbanConnectionError(KanbanImportClientError):
+    """Network connection failed (503 Service Unavailable)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, status_code=503)
+
+
+class KanbanAuthError(KanbanImportClientError):
+    """Authentication/authorization failed (401 Unauthorized)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, status_code=401)
+
+
+class KanbanTimeoutError(KanbanImportClientError):
+    """Request timed out (504 Gateway Timeout)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, status_code=504)
 
 
 def _rewrite_loopback_base_url(base_url: str) -> str | None:
@@ -88,7 +113,7 @@ def _verify_passcode(
         timeout=timeout_seconds,
     )
     if response.status_code != 200:
-        raise KanbanImportClientError(f"kanban_passcode_rejected:{response.status_code}")
+        raise KanbanAuthError(f"kanban_passcode_rejected:{response.status_code}")
 
 
 def _request_with_loopback_fallback(
@@ -131,14 +156,23 @@ def _request_with_loopback_fallback(
                         timeout=timeout_seconds,
                     )
                 return response, candidate
+        except httpx.TimeoutException as exc:
+            last_error = exc
+        except httpx.ConnectError as exc:
+            last_error = exc
         except httpx.HTTPError as exc:
             last_error = exc
 
     assert last_error is not None
     tried = ",".join(candidates)
-    raise KanbanImportClientError(
-        f"kanban_transport_error:{last_error.__class__.__name__}:tried={tried}"
-    ) from last_error
+    error_class = last_error.__class__.__name__
+    message = f"kanban_transport_error:{error_class}:tried={tried}"
+
+    if isinstance(last_error, httpx.TimeoutException):
+        raise KanbanTimeoutError(message) from last_error
+    if isinstance(last_error, httpx.ConnectError):
+        raise KanbanConnectionError(message) from last_error
+    raise KanbanImportClientError(message) from last_error
 
 
 def import_kanban_manifest(
