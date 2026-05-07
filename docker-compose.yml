@@ -16,7 +16,7 @@ services:
       - ./docs/planning/promptforge_seed_data.sql:/docker-entrypoint-initdb.d/002_seed.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U promptforge -d promptforge"]
-      interval: 30s
+      interval: 3m
       timeout: 5s
       retries: 10
       start_period: 15s
@@ -53,7 +53,7 @@ services:
       - promptforge_n8n_data:/home/node/.n8n
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/healthz || exit 1"]
-      interval: 30s
+      interval: 3m
       timeout: 5s
       retries: 10
       start_period: 20s
@@ -77,7 +77,7 @@ services:
       - "127.0.0.1:${PROMPTFORGE_SHIM_PORT:-8765}:8765"
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/healthz', timeout=3).read()\""]
-      interval: 30s
+      interval: 3m
       timeout: 10s
       retries: 5
       start_period: 30s
@@ -127,7 +127,7 @@ services:
           "CMD-SHELL",
           "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/_healthz', timeout=3).read()\"",
         ]
-      interval: 60s
+      interval: 3m
       timeout: 5s
       retries: 10
       start_period: 15s
@@ -178,7 +178,7 @@ services:
     entrypoint: ["/usr/local/bin/watcher_entrypoint.sh"]
     healthcheck:
       test: ["CMD-SHELL", "test -f /proc/1/status"]
-      interval: 30s
+      interval: 3m
       timeout: 5s
       retries: 3
       start_period: 10s
@@ -188,7 +188,7 @@ services:
       context: ../prompt-forge-console
       dockerfile: Dockerfile
       args:
-        VITE_PROMPTFORGE_API_BASE: ${PROMPTFORGE_CONSOLE_API_BASE:-http://localhost:8090}
+        VITE_PROMPTFORGE_API_BASE: ${PROMPTFORGE_CONSOLE_API_BASE:-}
     container_name: promptforge-console
     restart: unless-stopped
     depends_on:
@@ -198,7 +198,7 @@ services:
       - "127.0.0.1:${PROMPTFORGE_CONSOLE_PORT:-5174}:80"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO /dev/null http://127.0.0.1/ || exit 1"]
-      interval: 30s
+      interval: 3m
       timeout: 5s
       retries: 5
       start_period: 10s

@@ -16,6 +16,7 @@ from promptforge_services.models import (
     ValidateRequest,
     ValidateResponse,
 )
+from promptforge_services.schema_migrations import ensure_intake_notes_route_json
 from promptforge_services.pipeline import (
     prepare_delivery_request,
     preprocess_request,
@@ -52,6 +53,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def _apply_startup_schema_migrations() -> None:
+    database_url = os.getenv("PROMPTFORGE_DATABASE_URL")
+    if database_url:
+        ensure_intake_notes_route_json(database_url)
 
 
 @app.middleware("http")

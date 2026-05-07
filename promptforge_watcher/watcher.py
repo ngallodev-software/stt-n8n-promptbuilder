@@ -14,6 +14,7 @@ from watchdog.observers import Observer
 
 from promptforge_services.llm.router import get_llm_router
 from promptforge_services.models import PrepareDeliveryRequest, RenderRequest
+from promptforge_services.schema_migrations import ensure_intake_notes_route_json
 from promptforge_watcher.models import StoredLLMRun
 from promptforge_services.pipeline import (
     parse_directives,
@@ -34,6 +35,8 @@ SUPPORTED_ROUTE_FAMILIES = {family.value for family in RouteFamily}
 
 def run() -> None:
     cfg = WatcherConfig()
+    if cfg.database_url:
+        ensure_intake_notes_route_json(cfg.database_url)
     repository = build_repository(cfg.database_url)
     normalized_watch_folder = _normalize_watch_folder(cfg.watch_folder)
     watch_path = Path(cfg.vault_path) / normalized_watch_folder
