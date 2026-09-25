@@ -5,10 +5,10 @@ Phase 6 objective:
 Ensure containerized runtime is stable with backend + frontend + dependencies, and add repeatable smoke verification.
 
 Primary repo:
-- /lump/apps/prompt-forge
+- .
 
 Secondary repo (if needed for container tweaks):
-- /lump/apps/prompt-forge-console
+- prompt-forge-console
 
 Parallel packets:
 

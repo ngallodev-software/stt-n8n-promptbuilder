@@ -117,7 +117,7 @@ Logged per simplification brief mandate:
 3. **Log size check Codex-specific** — 100-line minimum log check failed claude -p runs which produce short logs. Fixed.
 4. **SKILL.md had stale model `gpt-5.1-codex-mini`** — no longer in registry. Fixed to `gpt-5.4-mini`.
 
-Follow-up planned in `/lump/apps/invoke-codex-from-claude/agent-notes/`.
+Follow-up planned in `invoke-codex-from-claude/agent-notes/`.
 
 ---
 

@@ -70,7 +70,7 @@ services:
       TZ: ${TZ:-America/Los_Angeles}
     volumes:
       - type: bind
-        source: ${CODEX_AUTH_DIR:-/home/nate/.codex}/auth.json
+        source: ${CODEX_AUTH_DIR:?set CODEX_AUTH_DIR}/auth.json
         target: /root/.codex/auth.json
         read_only: true
     ports:
@@ -169,7 +169,7 @@ services:
     volumes:
       - ./:/app
       - type: bind
-        source: ${PROMPTFORGE_VAULT_SOURCE:-/lump/share/media/development}
+        source: ${PROMPTFORGE_VAULT_SOURCE:-./vault}
         target: /vault
         bind:
           create_host_path: true

@@ -3,8 +3,8 @@
 Date: 2026-04-28
 
 Scope audited (read-only):
-- Backend: `/lump/apps/prompt-forge`
-- Frontend: `/lump/apps/prompt-forge-console`
+- Backend: `.`
+- Frontend: `prompt-forge-console`
 
 Method:
 - Codebase inspection only (no refactor, no edits to existing files)
@@ -23,31 +23,31 @@ Fact vs inference:
 
 | Item | Finding | Evidence |
 |---|---|---|
-| Absolute path | `/lump/apps/prompt-forge` | `/lump/apps/prompt-forge` |
-| Primary language | Python | `/lump/apps/prompt-forge/pyproject.toml` |
-| Framework | FastAPI + Watchdog | `/lump/apps/prompt-forge/promptforge_services/api.py`, `/lump/apps/prompt-forge/promptforge_watcher/watcher.py` |
-| Package manager | pip/setuptools (`pip install -e .`) | `/lump/apps/prompt-forge/README.md`, `/lump/apps/prompt-forge/pyproject.toml` |
-| Runtime expectation | Python `>=3.11` | `/lump/apps/prompt-forge/pyproject.toml` |
-| Dev commands | `uvicorn promptforge_services.api:app`, `python -m promptforge_watcher` | `/lump/apps/prompt-forge/README.md` |
-| Test commands | `python3 -m pytest -q` | `/lump/apps/prompt-forge/README.md` |
-| Build/deploy files | Dockerfiles + compose | `/lump/apps/prompt-forge/Dockerfile`, `/lump/apps/prompt-forge/Dockerfile.watcher`, `/lump/apps/prompt-forge/Dockerfile.shim`, `/lump/apps/prompt-forge/docker-compose.yml`, `/lump/apps/prompt-forge/docker-compose.dev.yml` |
-| Env files | `.env`, `.env.example` | `/lump/apps/prompt-forge/.env`, `/lump/apps/prompt-forge/.env.example` |
-| Setup docs | README + planning docs | `/lump/apps/prompt-forge/README.md`, `/lump/apps/prompt-forge/docs/planning/README.md` |
-| Schema/migrations | SQL schema + migration SQLs | `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql`, `/lump/apps/prompt-forge/docs/planning/*.sql` |
+| Absolute path | `.` | `.` |
+| Primary language | Python | `./pyproject.toml` |
+| Framework | FastAPI + Watchdog | `./promptforge_services/api.py`, `./promptforge_watcher/watcher.py` |
+| Package manager | pip/setuptools (`pip install -e .`) | `./README.md`, `./pyproject.toml` |
+| Runtime expectation | Python `>=3.11` | `./pyproject.toml` |
+| Dev commands | `uvicorn promptforge_services.api:app`, `python -m promptforge_watcher` | `./README.md` |
+| Test commands | `python3 -m pytest -q` | `./README.md` |
+| Build/deploy files | Dockerfiles + compose | `./Dockerfile`, `./Dockerfile.watcher`, `./Dockerfile.shim`, `./docker-compose.yml`, `./docker-compose.dev.yml` |
+| Env files | `.env`, `.env.example` | `./.env`, `./.env.example` |
+| Setup docs | README + planning docs | `./README.md`, `./docs/planning/README.md` |
+| Schema/migrations | SQL schema + migration SQLs | `./docs/planning/promptforge_postgres_schema.sql`, `./docs/planning/*.sql` |
 
 ### Frontend repo: `prompt-forge-console`
 
 | Item | Finding | Evidence |
 |---|---|---|
-| Absolute path | `/lump/apps/prompt-forge-console` | `/lump/apps/prompt-forge-console` |
-| Primary language | TypeScript | `/lump/apps/prompt-forge-console/src` |
-| Framework | React + Vite | `/lump/apps/prompt-forge-console/src/App.tsx`, `/lump/apps/prompt-forge-console/vite.config.ts` |
-| Package manager | npm (Bun locks also present) | `/lump/apps/prompt-forge-console/package.json`, `/lump/apps/prompt-forge-console/package-lock.json`, `/lump/apps/prompt-forge-console/bun.lockb` |
-| Runtime expectation | Node 20 (Docker build stage) | `/lump/apps/prompt-forge-console/Dockerfile` |
-| Dev/build/test | `vite`, `vite build`, `vitest run`, `eslint` | `/lump/apps/prompt-forge-console/package.json` |
-| Deploy files | Docker + nginx reverse proxy | `/lump/apps/prompt-forge-console/Dockerfile`, `/lump/apps/prompt-forge-console/nginx.conf` |
-| Env vars | `VITE_PROMPTFORGE_API_BASE` etc. | `/lump/apps/prompt-forge-console/Dockerfile`, `/lump/apps/prompt-forge-console/src/services/promptforge/api.ts`, `/lump/apps/prompt-forge-console/src/services/promptforge/config.ts` |
-| Setup docs | README is placeholder | `/lump/apps/prompt-forge-console/README.md` |
+| Absolute path | `prompt-forge-console` | `prompt-forge-console` |
+| Primary language | TypeScript | `prompt-forge-console/src` |
+| Framework | React + Vite | `prompt-forge-console/src/App.tsx`, `prompt-forge-console/vite.config.ts` |
+| Package manager | npm (Bun locks also present) | `prompt-forge-console/package.json`, `prompt-forge-console/package-lock.json`, `prompt-forge-console/bun.lockb` |
+| Runtime expectation | Node 20 (Docker build stage) | `prompt-forge-console/Dockerfile` |
+| Dev/build/test | `vite`, `vite build`, `vitest run`, `eslint` | `prompt-forge-console/package.json` |
+| Deploy files | Docker + nginx reverse proxy | `prompt-forge-console/Dockerfile`, `prompt-forge-console/nginx.conf` |
+| Env vars | `VITE_PROMPTFORGE_API_BASE` etc. | `prompt-forge-console/Dockerfile`, `prompt-forge-console/src/services/promptforge/api.ts`, `prompt-forge-console/src/services/promptforge/config.ts` |
+| Setup docs | README is placeholder | `prompt-forge-console/README.md` |
 
 ### Environment variables (redacted)
 
@@ -63,7 +63,7 @@ Backend (`.env.example`):
 - watcher folder vars
 - LLM base/model vars
 
-Evidence: `/lump/apps/prompt-forge/.env.example`
+Evidence: `./.env.example`
 
 ---
 
@@ -71,21 +71,21 @@ Evidence: `/lump/apps/prompt-forge/.env.example`
 
 | Concern | What exists now | Evidence |
 |---|---|---|
-| Framework | FastAPI app | `/lump/apps/prompt-forge/promptforge_services/api.py` |
-| Entrypoints | API + watcher module | `/lump/apps/prompt-forge/promptforge_services/api.py`, `/lump/apps/prompt-forge/promptforge_watcher/__main__.py` |
-| API structure | Core contract endpoints + large `/console` router | `/lump/apps/prompt-forge/promptforge_services/api.py`, `/lump/apps/prompt-forge/promptforge_services/console_api.py` |
+| Framework | FastAPI app | `./promptforge_services/api.py` |
+| Entrypoints | API + watcher module | `./promptforge_services/api.py`, `./promptforge_watcher/__main__.py` |
+| API structure | Core contract endpoints + large `/console` router | `./promptforge_services/api.py`, `./promptforge_services/console_api.py` |
 | Module organization | `promptforge_services` (API/pipeline/LLM/console), `promptforge_watcher` (ingest/watch/writeback/repo) | repo tree |
-| Service wiring | Direct imports/function calls (no IoC container) | `/lump/apps/prompt-forge/promptforge_services/api.py` |
-| DB layer | psycopg direct SQL in query/repo modules | `/lump/apps/prompt-forge/promptforge_services/console_queries.py`, `/lump/apps/prompt-forge/promptforge_watcher/repository.py` |
-| Migration system | SQL files + startup helper migration | `/lump/apps/prompt-forge/docs/planning/*.sql`, `/lump/apps/prompt-forge/promptforge_services/schema_migrations.py` |
-| Background workers | Filesystem watcher with startup catchup + event loop | `/lump/apps/prompt-forge/promptforge_watcher/watcher.py` |
-| Queue/jobs | Delivery status lifecycle in DB, no dedicated broker | `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql` |
-| External integrations | n8n webhook, Kanban TRPC, optional LLM provider calls | `/lump/apps/prompt-forge/promptforge_watcher/webhook.py`, `/lump/apps/prompt-forge/promptforge_services/kanban_client.py`, `/lump/apps/prompt-forge/promptforge_services/llm/*` |
-| LLM integration | Router + provider abstractions (openai/anthropic/openai_compatible/ollama/codex_exec) | `/lump/apps/prompt-forge/promptforge_services/llm/router.py`, `/lump/apps/prompt-forge/promptforge_services/llm/providers.py` |
-| n8n integration | Optional webhook emit + workflow assets | `/lump/apps/prompt-forge/promptforge_watcher/webhook.py`, `/lump/apps/prompt-forge/docs/planning/n8n_workflows/*` |
-| Auth/security | No end-user auth model; role behavior mostly UI-level; secret encryption utilities for console settings | `/lump/apps/prompt-forge/promptforge_services/console_models.py`, `/lump/apps/prompt-forge/promptforge_services/secrets.py` |
-| Logging/metrics/tracing | request logger middleware + DB-derived metric endpoints | `/lump/apps/prompt-forge/promptforge_services/api.py`, `/lump/apps/prompt-forge/promptforge_services/console_api.py` |
-| Error handling | HTTPException mapping + workflow error table | `/lump/apps/prompt-forge/promptforge_services/api.py`, `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql` |
+| Service wiring | Direct imports/function calls (no IoC container) | `./promptforge_services/api.py` |
+| DB layer | psycopg direct SQL in query/repo modules | `./promptforge_services/console_queries.py`, `./promptforge_watcher/repository.py` |
+| Migration system | SQL files + startup helper migration | `./docs/planning/*.sql`, `./promptforge_services/schema_migrations.py` |
+| Background workers | Filesystem watcher with startup catchup + event loop | `./promptforge_watcher/watcher.py` |
+| Queue/jobs | Delivery status lifecycle in DB, no dedicated broker | `./docs/planning/promptforge_postgres_schema.sql` |
+| External integrations | n8n webhook, Kanban TRPC, optional LLM provider calls | `./promptforge_watcher/webhook.py`, `./promptforge_services/kanban_client.py`, `./promptforge_services/llm/*` |
+| LLM integration | Router + provider abstractions (openai/anthropic/openai_compatible/ollama/codex_exec) | `./promptforge_services/llm/router.py`, `./promptforge_services/llm/providers.py` |
+| n8n integration | Optional webhook emit + workflow assets | `./promptforge_watcher/webhook.py`, `./docs/planning/n8n_workflows/*` |
+| Auth/security | No end-user auth model; role behavior mostly UI-level; secret encryption utilities for console settings | `./promptforge_services/console_models.py`, `./promptforge_services/secrets.py` |
+| Logging/metrics/tracing | request logger middleware + DB-derived metric endpoints | `./promptforge_services/api.py`, `./promptforge_services/console_api.py` |
+| Error handling | HTTPException mapping + workflow error table | `./promptforge_services/api.py`, `./docs/planning/promptforge_postgres_schema.sql` |
 
 ---
 
@@ -94,7 +94,7 @@ Evidence: `/lump/apps/prompt-forge/.env.example`
 ### Enums (selected)
 Fact: schema defines many enums: `pf_scope`, `pf_note_status`, `pf_revision_kind`, `pf_rule_type`, `pf_prompt_generation_status`, `pf_destination`, `pf_target_type`, `pf_delivery_mode`, `pf_delivery_status`, `pf_processing_status`, `pf_priority`.
 
-Evidence: `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql`
+Evidence: `./docs/planning/promptforge_postgres_schema.sql`
 
 ### Tables (all major)
 
@@ -123,7 +123,7 @@ Who creates/updates lifecycle (fact):
 - Watcher creates intake/utterance/revisions/prompt_generation/delivery/processing_run via repository import bundle.
 - Console API mutates delivery/rules/templates/dictionary/settings and logs admin actions.
 
-Evidence: `/lump/apps/prompt-forge/promptforge_watcher/repository.py`, `/lump/apps/prompt-forge/promptforge_services/console_api.py`
+Evidence: `./promptforge_watcher/repository.py`, `./promptforge_services/console_api.py`
 
 ---
 
@@ -138,7 +138,7 @@ Evidence: `/lump/apps/prompt-forge/promptforge_watcher/repository.py`, `/lump/ap
 - `POST /render`
 - `POST /prepare-delivery`
 
-Evidence: `/lump/apps/prompt-forge/promptforge_services/api.py`
+Evidence: `./promptforge_services/api.py`
 
 ### Console endpoints (inventory)
 Fact: `/console` includes bootstrap, settings, project/intake/prompt/delivery/rules/templates/targets/logs/metrics/kanban/llm assist/errors endpoints.
@@ -159,7 +159,7 @@ Primary endpoint declarations:
 - `/console/llm/assist`
 - `/console/errors/recent`, `/console/errors/{id}/dismiss`
 
-Evidence: `/lump/apps/prompt-forge/promptforge_services/console_api.py`
+Evidence: `./promptforge_services/console_api.py`
 
 Inference: this exceeds a minimal intake->review->deliver API by a wide margin.
 
@@ -179,17 +179,17 @@ Fact path:
 9. Updates delivery status after dispatch result.
 
 Evidence:
-- `/lump/apps/prompt-forge/promptforge_watcher/watcher.py`
-- `/lump/apps/prompt-forge/promptforge_services/pipeline.py`
-- `/lump/apps/prompt-forge/promptforge_watcher/repository.py`
-- `/lump/apps/prompt-forge/promptforge_watcher/webhook.py`
-- `/lump/apps/prompt-forge/promptforge_watcher/delivery.py`
-- `/lump/apps/prompt-forge/promptforge_watcher/writeback.py`
+- `./promptforge_watcher/watcher.py`
+- `./promptforge_services/pipeline.py`
+- `./promptforge_watcher/repository.py`
+- `./promptforge_watcher/webhook.py`
+- `./promptforge_watcher/delivery.py`
+- `./promptforge_watcher/writeback.py`
 
 Duplicates detection:
 - hash guard in watcher (`seen_hashes`) and unique note path check in repository.
 
-Evidence: `/lump/apps/prompt-forge/promptforge_watcher/watcher.py`, `/lump/apps/prompt-forge/promptforge_watcher/repository.py`
+Evidence: `./promptforge_watcher/watcher.py`, `./promptforge_watcher/repository.py`
 
 ---
 
@@ -212,18 +212,18 @@ Evidence: `/lump/apps/prompt-forge/promptforge_watcher/watcher.py`, `/lump/apps/
 
 | Concern | Finding | Evidence |
 |---|---|---|
-| Framework | React + Vite + TS | `/lump/apps/prompt-forge-console/src/App.tsx`, `/lump/apps/prompt-forge-console/vite.config.ts` |
-| Entrypoint | `main.tsx` -> `App.tsx` | `/lump/apps/prompt-forge-console/src/main.tsx` |
-| Routing | BrowserRouter with many pages | `/lump/apps/prompt-forge-console/src/App.tsx` |
-| State | Zustand persisted store | `/lump/apps/prompt-forge-console/src/stores/app-store.ts` |
-| API client pattern | typed fetch wrapper + React Query query keys | `/lump/apps/prompt-forge-console/src/services/promptforge/api.ts` |
-| UI lib | shadcn/radix-style component suite | `/lump/apps/prompt-forge-console/src/components/ui/*` |
-| Styling | Tailwind + CSS | `/lump/apps/prompt-forge-console/tailwind.config.ts`, `/lump/apps/prompt-forge-console/src/index.css` |
-| Form/validation | react-hook-form + zod deps | `/lump/apps/prompt-forge-console/package.json` |
-| Auth/session | no backend auth session; role switch in local store | `/lump/apps/prompt-forge-console/src/stores/app-store.ts`, `/lump/apps/prompt-forge-console/src/components/shell/RoleSwitcher.tsx` |
-| Build/test tooling | Vite/Vitest/ESLint | `/lump/apps/prompt-forge-console/package.json` |
-| Env vars | `VITE_PROMPTFORGE_API_BASE`, strict/fallback vars | `/lump/apps/prompt-forge-console/src/services/promptforge/api.ts`, `/lump/apps/prompt-forge-console/src/services/promptforge/config.ts` |
-| Deploy assumptions | nginx proxies API paths to backend | `/lump/apps/prompt-forge-console/nginx.conf` |
+| Framework | React + Vite + TS | `prompt-forge-console/src/App.tsx`, `prompt-forge-console/vite.config.ts` |
+| Entrypoint | `main.tsx` -> `App.tsx` | `prompt-forge-console/src/main.tsx` |
+| Routing | BrowserRouter with many pages | `prompt-forge-console/src/App.tsx` |
+| State | Zustand persisted store | `prompt-forge-console/src/stores/app-store.ts` |
+| API client pattern | typed fetch wrapper + React Query query keys | `prompt-forge-console/src/services/promptforge/api.ts` |
+| UI lib | shadcn/radix-style component suite | `prompt-forge-console/src/components/ui/*` |
+| Styling | Tailwind + CSS | `prompt-forge-console/tailwind.config.ts`, `prompt-forge-console/src/index.css` |
+| Form/validation | react-hook-form + zod deps | `prompt-forge-console/package.json` |
+| Auth/session | no backend auth session; role switch in local store | `prompt-forge-console/src/stores/app-store.ts`, `prompt-forge-console/src/components/shell/RoleSwitcher.tsx` |
+| Build/test tooling | Vite/Vitest/ESLint | `prompt-forge-console/package.json` |
+| Env vars | `VITE_PROMPTFORGE_API_BASE`, strict/fallback vars | `prompt-forge-console/src/services/promptforge/api.ts`, `prompt-forge-console/src/services/promptforge/config.ts` |
+| Deploy assumptions | nginx proxies API paths to backend | `prompt-forge-console/nginx.conf` |
 
 ---
 
@@ -246,10 +246,10 @@ Routes:
 - `/health`
 - `/settings`
 
-Evidence: `/lump/apps/prompt-forge-console/src/App.tsx`
+Evidence: `prompt-forge-console/src/App.tsx`
 
 Fact: each page calls corresponding `/console/*` endpoints through service layer.
-Evidence: `/lump/apps/prompt-forge-console/src/services/promptforge/api.ts`, `/lump/apps/prompt-forge-console/src/pages/*.tsx`
+Evidence: `prompt-forge-console/src/services/promptforge/api.ts`, `prompt-forge-console/src/pages/*.tsx`
 
 MVP relevance inference:
 - Essential: intake list/detail, prompt preview/review, delivery trigger/status.
@@ -272,10 +272,10 @@ Notable complexity-heavy patterns:
 - Many global states for role/theme/env/mock/debug/polling
 
 Evidence:
-- `/lump/apps/prompt-forge-console/src/components/pf/DataTable.tsx`
-- `/lump/apps/prompt-forge-console/src/components/pf/QueryInspector.tsx`
-- `/lump/apps/prompt-forge-console/src/components/pf/RoutePreview.tsx`
-- `/lump/apps/prompt-forge-console/src/stores/app-store.ts`
+- `prompt-forge-console/src/components/pf/DataTable.tsx`
+- `prompt-forge-console/src/components/pf/QueryInspector.tsx`
+- `prompt-forge-console/src/components/pf/RoutePreview.tsx`
+- `prompt-forge-console/src/stores/app-store.ts`
 
 ---
 
@@ -297,12 +297,12 @@ API base config:
 - Derived from runtime store + `VITE_PROMPTFORGE_API_BASE`
 - Hydration bootstrap path default `/console/bootstrap`
 
-Evidence: `/lump/apps/prompt-forge-console/src/services/promptforge/api.ts`, `/lump/apps/prompt-forge-console/src/stores/app-store.ts`
+Evidence: `prompt-forge-console/src/services/promptforge/api.ts`, `prompt-forge-console/src/stores/app-store.ts`
 
 Error behavior:
 - Typed `ApiError` + strict backend mode + optional mock fallback in development.
 
-Evidence: `/lump/apps/prompt-forge-console/src/services/promptforge/errors.ts`, `/lump/apps/prompt-forge-console/src/services/promptforge/config.ts`
+Evidence: `prompt-forge-console/src/services/promptforge/errors.ts`, `prompt-forge-console/src/services/promptforge/config.ts`
 
 Contract map (high-level):
 
@@ -335,7 +335,7 @@ Ports (default):
 - Postgres host `15439` -> `5432`
 - Shim `8765`
 
-Evidence: `/lump/apps/prompt-forge/docker-compose.yml`
+Evidence: `./docker-compose.yml`
 
 Inference: this is operationally heavy for a minimalist Kanban companion app.
 

@@ -6,3 +6,9 @@ vault/
 __pycache__/
 .codebase-memory/
 .codex
+
+# Local runtime and agent state
+.env.local.bak
+agentdb.rvf
+ruvector.db
+.claude-flow/tasks/store.json

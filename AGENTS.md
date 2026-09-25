@@ -5,7 +5,7 @@ This repository is a thin Python scaffold plus planning artifacts. Edit runnable
 
 Use `docs/planning/` for specifications, SQL schema and seed data, the MVP Docker Compose file, and the archived starter pack. Treat those documents as the design source of truth; when code behavior changes, update the matching spec in the same change.
 
-Detailed repo operating policy: [docs/planning/operating-policy.md](/lump/apps/prompt-forge/docs/planning/operating-policy.md)
+Detailed repo operating policy: [docs/planning/operating-policy.md](./docs/planning/operating-policy.md)
 
 ## Build, Test, and Development Commands
 Create a virtual environment with `python3 -m venv .venv && source .venv/bin/activate`.

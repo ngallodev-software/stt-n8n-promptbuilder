@@ -5,7 +5,7 @@ Phase 4 objective:
 Migrate frontend service reads from bootstrap-heavy local filtering to dedicated backend endpoints while preserving UI contract stability.
 
 Repo:
-- /lump/apps/prompt-forge-console
+- prompt-forge-console
 
 Parallel packets:
 

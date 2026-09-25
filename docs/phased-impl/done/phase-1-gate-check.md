@@ -6,7 +6,7 @@ Date: 2026-04-19
 
 ### ✅ Every frontend service function has explicit backend mapping state
 
-Source: `/lump/apps/prompt-forge-console/docs/frontend-service-mapping.md`
+Source: `prompt-forge-console/docs/frontend-service-mapping.md`
 
 All 51 service functions documented with mapping state:
 - **Implemented**: 11 mutation endpoints (`retryDelivery`, `rerouteDelivery`, `updateDeliveryStatus`, `updateRule`, `upsertTerm`, `activateTemplate`, `forceReview`, `clonePrompt`, `changePromptPriority`, `archiveNote`) + health check
@@ -15,20 +15,20 @@ All 51 service functions documented with mapping state:
 
 ### ✅ Query key shapes documented and locked
 
-Source: `/lump/apps/prompt-forge-console/docs/frontend-service-mapping.md` lines 52-86
+Source: `prompt-forge-console/docs/frontend-service-mapping.md` lines 52-86
 
 All 28 query key factory patterns enumerated with stable shapes.
 
 ### ✅ No code behavior changes in this phase
 
 Git status clean except docs:
-- `/lump/apps/prompt-forge/docs/api-compatibility-matrix.md` (new)
-- `/lump/apps/prompt-forge-console/docs/frontend-service-mapping.md` (new)
-- `/lump/apps/prompt-forge/docs/contract-gap-analysis.md` (new)
+- `./docs/api-compatibility-matrix.md` (new)
+- `prompt-forge-console/docs/frontend-service-mapping.md` (new)
+- `./docs/contract-gap-analysis.md` (new)
 
 ### ✅ All blocking gaps enumerated
 
-Source: `/lump/apps/prompt-forge/docs/contract-gap-analysis.md`
+Source: `./docs/contract-gap-analysis.md`
 
 **Blocking**: None. All frontend service calls target existing backend endpoints.
 

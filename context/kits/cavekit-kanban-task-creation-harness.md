@@ -70,7 +70,7 @@ It does not cover:
 
 ### R6: Local validation uses live Kanban
 
-**Description:** The planning target is a local dogfood loop against `/lump/apps/kanban` roll-up, not mock-only validation.
+**Description:** The planning target is a local dogfood loop against `kanban` roll-up, not mock-only validation.
 
 **Acceptance Criteria:**
 - [ ] Validation plan includes one live Kanban runtime path.
@@ -110,4 +110,4 @@ It does not cover:
 ## Cross-References
 
 - `context/refs/kanban-local-harness.md`
-- `/lump/apps/kanban-integration-idea/docs/Phase2/013-minimal-kanban-integration-feature.md`
+- `kanban-integration-idea/docs/Phase2/013-minimal-kanban-integration-feature.md`

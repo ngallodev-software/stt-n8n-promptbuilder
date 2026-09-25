@@ -5,7 +5,7 @@ Phase 3 objective:
 Harden existing `/console/*` mutation endpoints with strict validation, consistent error semantics, and integration tests.
 
 Repo:
-- /lump/apps/prompt-forge
+- .
 
 Parallel packets:
 

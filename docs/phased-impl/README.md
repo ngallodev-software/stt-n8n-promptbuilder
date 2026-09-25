@@ -2,8 +2,8 @@
 
 This directory contains delegation-optimized prompts for finishing remaining integration work across:
 
-- Backend repo: `stt-n8n-promptbuilder` (`/lump/apps/prompt-forge`)
-- Frontend repo: `prompt-forge-console` (`/lump/apps/prompt-forge-console`)
+- Backend repo: `stt-n8n-promptbuilder` (`.`)
+- Frontend repo: `prompt-forge-console` (`prompt-forge-console`)
 
 ## Files
 

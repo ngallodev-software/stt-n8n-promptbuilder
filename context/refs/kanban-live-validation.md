@@ -2,7 +2,7 @@
 
 ## Target
 
-- Kanban repo: `/lump/apps/kanban`
+- Kanban repo: `kanban`
 - branch: `fork/feature-requests/roll-up`
 
 ## Runtime

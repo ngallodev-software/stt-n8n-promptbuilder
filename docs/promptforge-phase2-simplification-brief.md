@@ -5,7 +5,7 @@ This document is a compact, decision-locked brief for planning and executing a p
 It is intended to be used as a prompt/context artifact for Claude using Cavekit design/planning skills.
 
 Primary reference:
-- [docs/promptforge-multi-agent-red-team-review.md](/lump/apps/prompt-forge/docs/promptforge-multi-agent-red-team-review.md:1)
+- [docs/promptforge-multi-agent-red-team-review.md](./docs/promptforge-multi-agent-red-team-review.md:1)
 
 ## Purpose
 
@@ -432,9 +432,9 @@ Peer review should specifically attack:
 ## Explicit Delegation Instructions Using `codex-job`
 
 Claude should actively look for work packets that are implementation-ready and delegate them using the installed user-level skill:
-- skill doc: [/home/nate/.claude/skills/codex-job/SKILL.md](/home/nate/.claude/skills/codex-job/SKILL.md:1)
-- runtime scripts: [/home/nate/.claude/skills/codex-job/scripts](/home/nate/.claude/skills/codex-job/scripts:1)
-- source repo for the skill/runtime: [/lump/apps/invoke-codex-from-claude](/lump/apps/invoke-codex-from-claude:1)
+- skill doc: [~/.claude/skills/codex-job/SKILL.md](~/.claude/skills/codex-job/SKILL.md:1)
+- runtime scripts: [~/.claude/skills/codex-job/scripts](~/.claude/skills/codex-job/scripts:1)
+- source repo for the skill/runtime: [invoke-codex-from-claude](invoke-codex-from-claude:1)
 
 Delegation should happen only after:
 - requirements are clear
@@ -483,7 +483,7 @@ High-tier Codex use should be reserved for tasks that cannot be cleanly split fu
 Example command shape:
 
 ```text
-/codex-job --repo /lump/apps/prompt-forge --provider anthropic --tier low --task "
+/codex-job --repo . --provider anthropic --tier low --task "
 Task: inventory and classify all frontend/backend auth-role remnants for deletion.
 
 Scope:
@@ -510,7 +510,7 @@ Use this pattern for inventory, classification, and bounded analysis packets.
 ### Example: delegate a medium Codex implementation packet
 
 ```text
-/codex-job --repo /lump/apps/prompt-forge --provider openai --tier medium --task "
+/codex-job --repo . --provider openai --tier medium --task "
 Task: implement append-only delivery attempts and remove in-place retry mutation.
 
 Write set:
@@ -537,7 +537,7 @@ Use this pattern for implementation packets with explicit write sets and accepta
 ### Example: delegate a Codex hardening packet
 
 ```text
-/codex-job --repo /lump/apps/prompt-forge --provider openai --tier medium --task "
+/codex-job --repo . --provider openai --tier medium --task "
 Task: remove role-header behavior and enforce strict single-user local-only runtime defaults.
 
 Write set:
@@ -583,7 +583,7 @@ Failure must produce a recorded learning artifact.
 If, during PromptForge phase-2 planning or implementation, Claude discovers weaknesses in the `codex-job` skill or runtime, those weaknesses must not be left as vague notes.
 
 They must translate into concrete planned work in the `codex-job` source repo:
-- source repo: [/lump/apps/invoke-codex-from-claude](/lump/apps/invoke-codex-from-claude:1)
+- source repo: [invoke-codex-from-claude](invoke-codex-from-claude:1)
 
 Examples of `codex-job` weaknesses that should trigger source-repo planning:
 - poor delegation ergonomics
@@ -602,8 +602,8 @@ When this happens, Claude should:
 3. ensure the plan is implementation-ready enough for later `codex-job` execution
 
 Suggested source-repo plan locations:
-- `/lump/apps/invoke-codex-from-claude/agent-notes/`
-- `/lump/apps/invoke-codex-from-claude/docs/`
+- `invoke-codex-from-claude/agent-notes/`
+- `invoke-codex-from-claude/docs/`
 
 Suggested artifact names:
 - `agent-notes/codex-job-followup-<topic>.md`
@@ -629,7 +629,7 @@ Good operating loop:
 3. Claude delegates a bounded packet to Haiku or Codex using `/codex-job`.
 4. Claude inspects result, updates tracking, and either merges or revises.
 5. If delegated work exposed a spec gap, Claude updates the relevant Cavekit kit.
-6. If delegated work exposed a `codex-job` weakness, Claude creates a follow-up plan in `/lump/apps/invoke-codex-from-claude`.
+6. If delegated work exposed a `codex-job` weakness, Claude creates a follow-up plan in `invoke-codex-from-claude`.
 7. Claude continues with a narrower, better-defined next packet.
 
 This loop should repeat until the simplification plan and implementation converge.
@@ -672,7 +672,7 @@ Use this brief and the red-team review as the basis for a Cavekit-driven simplif
 Suggested framing:
 
 > You are planning PromptForge phase 2 as a simplification, cleanup, and focus pass, not a feature expansion pass.
-> Use [docs/promptforge-multi-agent-red-team-review.md](/lump/apps/prompt-forge/docs/promptforge-multi-agent-red-team-review.md:1) and [docs/promptforge-phase2-simplification-brief.md](/lump/apps/prompt-forge/docs/promptforge-phase2-simplification-brief.md:1) as authoritative input.
+> Use [docs/promptforge-multi-agent-red-team-review.md](./docs/promptforge-multi-agent-red-team-review.md:1) and [docs/promptforge-phase2-simplification-brief.md](./docs/promptforge-phase2-simplification-brief.md:1) as authoritative input.
 > Produce a compact but rigorous Cavekit-style planning package that defines the simplified target architecture, required deletions, deferrals, hard constraints, behavioral acceptance criteria, and implementation sequencing for phase 2.
 > Optimize for architectural truth, reduced complexity, and operational clarity.
 > Do not preserve future-proofing theater, fake modularity, or broad control-plane scope.

@@ -21,11 +21,11 @@ Use existing Prompt Forge seams:
 
 Use existing Kanban seams:
 
-- `/lump/apps/kanban/src/trpc/workspace-api.ts`
+- `kanban/src/trpc/workspace-api.ts`
   - `workspace.importTasks`
-- `/lump/apps/kanban/src/core/api-contract.ts`
+- `kanban/src/core/api-contract.ts`
   - import `v1` contract
-- `/lump/apps/kanban/src/commands/task.ts`
+- `kanban/src/commands/task.ts`
   - `task import --file`
 
 ## Architecture Decision

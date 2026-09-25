@@ -6,8 +6,8 @@ Use the following prompt as-is with Claude.
 You are planning PromptForge phase 2 as a simplification, cleanup, and focus pass, not a feature expansion pass.
 
 Read these two documents fully before doing anything else:
-1. /lump/apps/prompt-forge/docs/promptforge-multi-agent-red-team-review.md
-2. /lump/apps/prompt-forge/docs/promptforge-phase2-simplification-brief.md
+1. ./docs/promptforge-multi-agent-red-team-review.md
+2. ./docs/promptforge-phase2-simplification-brief.md
 
 Treat the simplification brief as the current decision-locked source of truth.
 Treat the red-team review as the critique and problem inventory that phase 2 must resolve.
@@ -28,7 +28,7 @@ Operating rules:
 - prefer narrowing over adding
 - prefer explicit boundaries over flexible language
 - if implementation reality exposes a spec gap, revise the Cavekit artifacts first
-- if delegated work exposes a weakness in codex-job, create a concrete follow-up plan in /lump/apps/invoke-codex-from-claude for codex-job to implement later
+- if delegated work exposes a weakness in codex-job, create a concrete follow-up plan in invoke-codex-from-claude for codex-job to implement later
 
 Execution method requirements:
 - use Cavekit intentionally, not cosmetically

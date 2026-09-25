@@ -6,7 +6,7 @@ Ground Prompt Forge planning against real Kanban seams already available on loca
 
 ## Target Kanban Runtime
 
-- Repo: `/lump/apps/kanban`
+- Repo: `kanban`
 - Branch: `fork/feature-requests/roll-up`
 - Local branch state when this ref was written:
   - build passes
@@ -18,16 +18,16 @@ Ground Prompt Forge planning against real Kanban seams already available on loca
 Primary seam:
 
 - `workspace.importTasks`
-  - file: `/lump/apps/kanban/src/trpc/workspace-api.ts`
+  - file: `kanban/src/trpc/workspace-api.ts`
 
 CLI seam on top of same contract:
 
 - `task import --file <path>`
-  - file: `/lump/apps/kanban/src/commands/task.ts`
+  - file: `kanban/src/commands/task.ts`
 
 Contract schema:
 
-- file: `/lump/apps/kanban/src/core/api-contract.ts`
+- file: `kanban/src/core/api-contract.ts`
 
 Request shape:
 

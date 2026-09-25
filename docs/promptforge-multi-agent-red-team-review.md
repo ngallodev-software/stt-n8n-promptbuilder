@@ -7,10 +7,10 @@ PromptForge is a local ingestion-and-compilation system with a swollen admin sur
 The core product is smaller than the architecture around it. The real system today is: Obsidian note intake -> Python watcher -> deterministic compile path -> Postgres -> optional delivery/write-back. Everything else is either support tooling, partial scaffolding, or future-proofing theater.
 
 Selected evidence:
-- Architecture narrative: [docs/promptforge-system-architecture.md](/lump/apps/prompt-forge/docs/promptforge-system-architecture.md:3)
-- MVP plan still treating n8n as central orchestration: [docs/planning/promptforge_mvp_master_plan.md](/lump/apps/prompt-forge/docs/planning/promptforge_mvp_master_plan.md:7)
-- Actual watcher-owned runtime path: [promptforge_watcher/watcher.py](/lump/apps/prompt-forge/promptforge_watcher/watcher.py:90)
-- Console/API surface size: `40` console routes / `3263` LOC in [console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:1) vs `7` core API routes / `118` LOC in [api.py](/lump/apps/prompt-forge/promptforge_services/api.py:1)
+- Architecture narrative: [docs/promptforge-system-architecture.md](./docs/promptforge-system-architecture.md:3)
+- MVP plan still treating n8n as central orchestration: [docs/planning/promptforge_mvp_master_plan.md](./docs/planning/promptforge_mvp_master_plan.md:7)
+- Actual watcher-owned runtime path: [promptforge_watcher/watcher.py](./promptforge_watcher/watcher.py:90)
+- Console/API surface size: `40` console routes / `3263` LOC in [console_api.py](./promptforge_services/console_api.py:1) vs `7` core API routes / `118` LOC in [api.py](./promptforge_services/api.py:1)
 
 ## 2. Independent agent findings
 
@@ -58,10 +58,10 @@ What to remove or simplify:
 5. What would you change first? Rewrite the architecture around the real runtime path before adding anything else.
 
 Selected evidence:
-- Claimed ownership: [docs/promptforge-system-architecture.md](/lump/apps/prompt-forge/docs/promptforge-system-architecture.md:12)
-- Actual watcher path: [promptforge_watcher/watcher.py](/lump/apps/prompt-forge/promptforge_watcher/watcher.py:145)
-- Source note mutation/delete: [promptforge_watcher/writeback.py](/lump/apps/prompt-forge/promptforge_watcher/writeback.py:14)
-- Live session implementation: [promptforge_services/delivery_dispatch.py](/lump/apps/prompt-forge/promptforge_services/delivery_dispatch.py:376), [tests/test_delivery_dispatch_live_sessions.py](/lump/apps/prompt-forge/tests/test_delivery_dispatch_live_sessions.py:32)
+- Claimed ownership: [docs/promptforge-system-architecture.md](./docs/promptforge-system-architecture.md:12)
+- Actual watcher path: [promptforge_watcher/watcher.py](./promptforge_watcher/watcher.py:145)
+- Source note mutation/delete: [promptforge_watcher/writeback.py](./promptforge_watcher/writeback.py:14)
+- Live session implementation: [promptforge_services/delivery_dispatch.py](./promptforge_services/delivery_dispatch.py:376), [tests/test_delivery_dispatch_live_sessions.py](./tests/test_delivery_dispatch_live_sessions.py:32)
 
 ### Agent 2 — Backend / Workflow Red Teamer
 
@@ -107,10 +107,10 @@ What to remove or simplify:
 5. What would you change first? Make retry/reroute append a new attempt row and keep Python as sole dispatcher.
 
 Selected evidence:
-- Watcher loop and per-note processing: [promptforge_watcher/watcher.py](/lump/apps/prompt-forge/promptforge_watcher/watcher.py:71)
-- Webhook after commit: [promptforge_watcher/watcher.py](/lump/apps/prompt-forge/promptforge_watcher/watcher.py:97), [promptforge_watcher/webhook.py](/lump/apps/prompt-forge/promptforge_watcher/webhook.py:50)
-- In-place retry mutation: [promptforge_services/console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:2599)
-- n8n workflow runtime assumptions: [docs/planning/n8n_workflows/README.md](/lump/apps/prompt-forge/docs/planning/n8n_workflows/README.md:27)
+- Watcher loop and per-note processing: [promptforge_watcher/watcher.py](./promptforge_watcher/watcher.py:71)
+- Webhook after commit: [promptforge_watcher/watcher.py](./promptforge_watcher/watcher.py:97), [promptforge_watcher/webhook.py](./promptforge_watcher/webhook.py:50)
+- In-place retry mutation: [promptforge_services/console_api.py](./promptforge_services/console_api.py:2599)
+- n8n workflow runtime assumptions: [docs/planning/n8n_workflows/README.md](./docs/planning/n8n_workflows/README.md:27)
 
 ### Agent 3 — Frontend / Control Plane Red Teamer
 
@@ -158,9 +158,9 @@ What to remove or simplify:
 5. What would you change first? Cut the console scope to queue/review, delivery ops, and settings.
 
 Selected evidence:
-- Bootstrap contract shape: [tests/test_console_read_endpoints.py](/lump/apps/prompt-forge/tests/test_console_read_endpoints.py:66)
-- Role default/admin fallback: [promptforge_services/console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:247)
-- Dispatch ignoring safety metadata: [promptforge_services/console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:1166), [promptforge_services/console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:1936)
+- Bootstrap contract shape: [tests/test_console_read_endpoints.py](./tests/test_console_read_endpoints.py:66)
+- Role default/admin fallback: [promptforge_services/console_api.py](./promptforge_services/console_api.py:247)
+- Dispatch ignoring safety metadata: [promptforge_services/console_api.py](./promptforge_services/console_api.py:1166), [promptforge_services/console_api.py](./promptforge_services/console_api.py:1936)
 
 ### Agent 4 — Data / Lineage / Schema Red Teamer
 
@@ -207,9 +207,9 @@ What to remove or simplify:
 5. What would you change first? Decide whether phase 2 wants true event history or just current state; then model only that.
 
 Selected evidence:
-- Schema table count and session registry: [docs/planning/promptforge_postgres_schema.sql](/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql:486)
-- Mutable delivery state: [promptforge_services/console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:2599)
-- Current-state lineage projection: [promptforge_services/console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:2141)
+- Schema table count and session registry: [docs/planning/promptforge_postgres_schema.sql](./docs/planning/promptforge_postgres_schema.sql:486)
+- Mutable delivery state: [promptforge_services/console_api.py](./promptforge_services/console_api.py:2599)
+- Current-state lineage projection: [promptforge_services/console_api.py](./promptforge_services/console_api.py:2141)
 
 ### Agent 5 — Security / Reliability / Ops Red Teamer
 
@@ -259,10 +259,10 @@ What to remove or simplify:
 5. What would you change first? Fail closed on auth and add vault/path safety checks immediately.
 
 Selected evidence:
-- Role header default admin: [promptforge_services/console_api.py](/lump/apps/prompt-forge/promptforge_services/console_api.py:247)
-- Obsidian note path write: [promptforge_services/delivery_dispatch.py](/lump/apps/prompt-forge/promptforge_services/delivery_dispatch.py:502)
-- tmux live dispatch: [promptforge_services/delivery_dispatch.py](/lump/apps/prompt-forge/promptforge_services/delivery_dispatch.py:263)
-- Manual n8n import/activation: [docs/planning/n8n_workflows/README.md](/lump/apps/prompt-forge/docs/planning/n8n_workflows/README.md:24)
+- Role header default admin: [promptforge_services/console_api.py](./promptforge_services/console_api.py:247)
+- Obsidian note path write: [promptforge_services/delivery_dispatch.py](./promptforge_services/delivery_dispatch.py:502)
+- tmux live dispatch: [promptforge_services/delivery_dispatch.py](./promptforge_services/delivery_dispatch.py:263)
+- Manual n8n import/activation: [docs/planning/n8n_workflows/README.md](./docs/planning/n8n_workflows/README.md:24)
 
 ### Agent 6 — Simplification / Leverage Teamer
 
@@ -313,9 +313,9 @@ What to remove or simplify:
 5. What would you change first? Cut the architecture back to one core compile-and-deliver loop.
 
 Selected evidence:
-- MVP plan centralizing n8n: [docs/planning/promptforge_mvp_master_plan.md](/lump/apps/prompt-forge/docs/planning/promptforge_mvp_master_plan.md:7)
-- Watcher already owning the hot path: [promptforge_watcher/watcher.py](/lump/apps/prompt-forge/promptforge_watcher/watcher.py:145)
-- Strict directive grammar recommended by docs: [docs/planning/promptforge_mvp_master_plan.md](/lump/apps/prompt-forge/docs/planning/promptforge_mvp_master_plan.md:194)
+- MVP plan centralizing n8n: [docs/planning/promptforge_mvp_master_plan.md](./docs/planning/promptforge_mvp_master_plan.md:7)
+- Watcher already owning the hot path: [promptforge_watcher/watcher.py](./promptforge_watcher/watcher.py:145)
+- Strict directive grammar recommended by docs: [docs/planning/promptforge_mvp_master_plan.md](./docs/planning/promptforge_mvp_master_plan.md:194)
 
 ## 3. Cross-agent challenges and disagreements
 

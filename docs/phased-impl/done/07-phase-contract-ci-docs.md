@@ -5,8 +5,8 @@ Phase 7 objective:
 Add cross-repo contract drift protection, finalize docs, and prepare safe release checklist.
 
 Repos:
-- /lump/apps/prompt-forge
-- /lump/apps/prompt-forge-console
+- .
+- prompt-forge-console
 
 Parallel packets:
 

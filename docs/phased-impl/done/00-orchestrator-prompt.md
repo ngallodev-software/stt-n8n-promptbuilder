@@ -4,8 +4,8 @@
 You are the lead orchestrator for a two-repo implementation.
 
 Repos:
-1) Backend: /lump/apps/prompt-forge
-2) Frontend: /lump/apps/prompt-forge-console
+1) Backend: .
+2) Frontend: prompt-forge-console
 
 Mission:
 Finish production-grade integration between frontend and backend with minimal UI rewrites, strong API contracts, and reliable runtime behavior.

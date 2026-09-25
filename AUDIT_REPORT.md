@@ -4,8 +4,8 @@
 **Purpose**: Factual inventory of what PromptForge became to avoid repeating complexity in a new Kanban-integrated minimalist implementation.
 
 **Audited Repositories**:
-- Backend: `/lump/apps/prompt-forge`
-- Frontend: `/lump/apps/prompt-forge-console`
+- Backend: `.`
+- Frontend: `prompt-forge-console`
 
 ---
 
@@ -13,7 +13,7 @@
 
 ### Backend: `prompt-forge`
 
-**Path**: `/lump/apps/prompt-forge`
+**Path**: `.`
 
 **Primary Language**: Python 3.11+
 
@@ -67,11 +67,11 @@ python3 -m pytest -q
 - `PROMPTFORGE_KANBAN_WORKSPACE_ID` - Optional workspace binding
 - `PROMPTFORGE_SECRETS_MASTER_KEY` - Fernet key for console secret encryption (base64)
 
-**README/Setup**: `/lump/apps/prompt-forge/README.md`
+**README/Setup**: `./README.md`
 
 **Generated Code**: None
 
-**Schema Files**: `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql`
+**Schema Files**: `./docs/planning/promptforge_postgres_schema.sql`
 
 **Dependencies** (from pyproject.toml):
 - FastAPI, Uvicorn, Pydantic - API framework
@@ -90,7 +90,7 @@ python3 -m pytest -q
 
 ### Frontend: `prompt-forge-console`
 
-**Path**: `/lump/apps/prompt-forge-console`
+**Path**: `prompt-forge-console`
 
 **Primary Language**: TypeScript
 
@@ -152,8 +152,8 @@ npm run test:watch    # Watch mode
 **Framework**: FastAPI
 
 **Application Entrypoints**:
-- `/lump/apps/prompt-forge/promptforge_services/api.py` - API service
-- `/lump/apps/prompt-forge/promptforge_watcher/__main__.py` - Watcher service
+- `./promptforge_services/api.py` - API service
+- `./promptforge_watcher/__main__.py` - Watcher service
 
 **API Structure**: RESTful HTTP endpoints
 
@@ -173,17 +173,17 @@ npm run test:watch    # Watch mode
 - Connection management via `psycopg.connect()` context managers
 
 **Migration System**:
-- Manual SQL scripts in `/lump/apps/prompt-forge/docs/planning/`
+- Manual SQL scripts in `./docs/planning/`
 - Startup migration hook in API: `ensure_intake_notes_route_json()`
-- Bootstrap script: `/lump/apps/prompt-forge/scripts/bootstrap_stack.sh`
-- Separate migration runner: `/lump/apps/prompt-forge/scripts/migrate_postgres.sh`
+- Bootstrap script: `./scripts/bootstrap_stack.sh`
+- Separate migration runner: `./scripts/migrate_postgres.sh`
 
 **Background Workers**: None - watcher runs as separate long-lived process
 
 **Schedulers**: None
 
 **File Watchers**:
-- `/lump/apps/prompt-forge/promptforge_watcher/watcher.py`
+- `./promptforge_watcher/watcher.py`
 - Uses `watchdog` library for filesystem events
 - Two-phase: startup catch-up scan + event-driven mode
 - Per-file debouncing with configurable stabilization delay
@@ -196,14 +196,14 @@ npm run test:watch    # Watch mode
 - **LLM providers**: Pluggable (OpenAI, Anthropic, Ollama, OpenAI-compatible, LMStudio, LlamaCPP)
 
 **LLM/Provider Integration**:
-- `/lump/apps/prompt-forge/promptforge_services/llm/router.py` - Provider abstraction
-- `/lump/apps/prompt-forge/promptforge_services/llm/providers.py` - Provider implementations
-- `/lump/apps/prompt-forge/promptforge_services/llm/config.py` - LLM settings
+- `./promptforge_services/llm/router.py` - Provider abstraction
+- `./promptforge_services/llm/providers.py` - Provider implementations
+- `./promptforge_services/llm/config.py` - LLM settings
 - Default mode: `deterministic_only` (LLM disabled)
 - Optional modes: `deterministic_plus_review`, `llm_inference_optional`
 
 **Webhook/n8n Integration**:
-- `/lump/apps/prompt-forge/promptforge_watcher/webhook.py`
+- `./promptforge_watcher/webhook.py`
 - Configurable via `PROMPTFORGE_WEBHOOK_ENABLED`, `PROMPTFORGE_N8N_WEBHOOK_URL`
 - POST intake note payload to n8n on successful import
 
@@ -211,7 +211,7 @@ npm run test:watch    # Watch mode
 - **No auth** - localhost-only deployment
 - CORS configured for local frontend origins
 - Secrets encryption: Fernet (symmetric) with `PROMPTFORGE_SECRETS_MASTER_KEY`
-- `/lump/apps/prompt-forge/promptforge_services/secrets.py` - Secret encryption helpers
+- `./promptforge_services/secrets.py` - Secret encryption helpers
 
 **Logging/Metrics/Tracing**:
 - Python `logging` module
@@ -227,7 +227,7 @@ npm run test:watch    # Watch mode
 
 ## 3. Backend: Domain Model and Database
 
-Schema source: `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql`
+Schema source: `./docs/planning/promptforge_postgres_schema.sql`
 
 ### Core Entities
 
@@ -480,7 +480,7 @@ Schema source: `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schem
 
 ## 4. Backend: API Surface
 
-Source: `/lump/apps/prompt-forge/promptforge_services/api.py`, `/lump/apps/prompt-forge/promptforge_services/console_api.py`
+Source: `./promptforge_services/api.py`, `./promptforge_services/console_api.py`
 
 ### Core Processing Endpoints
 
@@ -691,7 +691,7 @@ Organized by functional group:
 
 ## 5. Backend: Processing Pipeline
 
-Source: `/lump/apps/prompt-forge/promptforge_watcher/__main__.py`, `/lump/apps/prompt-forge/promptforge_services/pipeline.py`, `/lump/apps/prompt-forge/promptforge_watcher/watcher.py`
+Source: `./promptforge_watcher/__main__.py`, `./promptforge_services/pipeline.py`, `./promptforge_watcher/watcher.py`
 
 ### Pipeline Flow
 
@@ -751,7 +751,7 @@ Route by destination:
 
 #### Note Entry
 
-**Function**: `_handle_note_file()` in `/lump/apps/prompt-forge/promptforge_watcher/watcher.py`
+**Function**: `_handle_note_file()` in `./promptforge_watcher/watcher.py`
 
 **Steps**:
 1. Read file, parse frontmatter + body
@@ -765,7 +765,7 @@ Route by destination:
 
 #### Preprocessing
 
-**Function**: `preprocess_request()` in `/lump/apps/prompt-forge/promptforge_services/pipeline.py`
+**Function**: `preprocess_request()` in `./promptforge_services/pipeline.py`
 
 **Input**: `PreprocessRequest` (frontmatter, control_text, transcript_text, known_projects)
 
@@ -789,7 +789,7 @@ Route by destination:
 
 #### Validation
 
-**Function**: `validate_request()` in `/lump/apps/prompt-forge/promptforge_services/pipeline.py`
+**Function**: `validate_request()` in `./promptforge_services/pipeline.py`
 
 **Input**: `ValidateRequest` (contract_name, payload dict)
 
@@ -807,7 +807,7 @@ Route by destination:
 
 #### Rendering
 
-**Function**: `render_request()` in `/lump/apps/prompt-forge/promptforge_services/pipeline.py`
+**Function**: `render_request()` in `./promptforge_services/pipeline.py`
 
 **Input**: `RenderRequest` (contract_name, payload dict)
 
@@ -830,7 +830,7 @@ Route by destination:
 
 #### Delivery Preparation
 
-**Function**: `prepare_delivery_request()` in `/lump/apps/prompt-forge/promptforge_services/pipeline.py`
+**Function**: `prepare_delivery_request()` in `./promptforge_services/pipeline.py`
 
 **Input**: `PrepareDeliveryRequest` (contract_name, payload, priority)
 
@@ -850,7 +850,7 @@ Route by destination:
 
 #### Delivery Dispatch
 
-**Function**: `dispatch_delivery()` in `/lump/apps/prompt-forge/promptforge_watcher/delivery.py`
+**Function**: `dispatch_delivery()` in `./promptforge_watcher/delivery.py`
 
 **Input**: Delivery record from database
 
@@ -877,7 +877,7 @@ Route by destination:
 
 #### Webhook Posting
 
-**Function**: `post_webhook()` in `/lump/apps/prompt-forge/promptforge_watcher/webhook.py`
+**Function**: `post_webhook()` in `./promptforge_watcher/webhook.py`
 
 **Input**: Intake note payload
 
@@ -894,7 +894,7 @@ Route by destination:
 
 #### Writeback
 
-**Function**: `writeback_processed_note()` in `/lump/apps/prompt-forge/promptforge_watcher/writeback.py`
+**Function**: `writeback_processed_note()` in `./promptforge_watcher/writeback.py`
 
 **Input**: Intake note record, delivery record
 
@@ -934,8 +934,8 @@ Route by destination:
 ### Multi-Project Support
 
 **Files**:
-- `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql` (lines 172-196, projects table)
-- `/lump/apps/prompt-forge/promptforge_services/console_api.py` (project CRUD endpoints)
+- `./docs/planning/promptforge_postgres_schema.sql` (lines 172-196, projects table)
+- `./promptforge_services/console_api.py` (project CRUD endpoints)
 
 **Problem**: Enables multiple projects per installation
 
@@ -969,9 +969,9 @@ Route by destination:
 ### Rule Engine
 
 **Files**:
-- `/lump/apps/prompt-forge/docs/planning/promptforge_postgres_schema.sql` (lines 295-347, rulesets + rules)
-- `/lump/apps/prompt-forge/promptforge_services/console_api.py` (rule CRUD, dry-run endpoint)
-- Frontend: `/lump/apps/prompt-forge-console/src/pages/Rules.tsx` (25KB)
+- `./docs/planning/promptforge_postgres_schema.sql` (lines 295-347, rulesets + rules)
+- `./promptforge_services/console_api.py` (rule CRUD, dry-run endpoint)
+- Frontend: `prompt-forge-console/src/pages/Rules.tsx` (25KB)
 
 **Problem**: Generic rule matching and action execution
 
@@ -992,7 +992,7 @@ Route by destination:
 **Files**:
 - Schema: `prompt_templates` table (lines 374-401)
 - Console API: Template CRUD + activation
-- Frontend: `/lump/apps/prompt-forge-console/src/pages/Templates.tsx` (19KB)
+- Frontend: `prompt-forge-console/src/pages/Templates.tsx` (19KB)
 
 **Problem**: Database-backed template management with versioning
 
@@ -1012,7 +1012,7 @@ Route by destination:
 **Files**:
 - Schema: `term_dictionary` table
 - Console API: Dictionary CRUD
-- Frontend: `/lump/apps/prompt-forge-console/src/pages/Dictionary.tsx` (16KB)
+- Frontend: `prompt-forge-console/src/pages/Dictionary.tsx` (16KB)
 
 **Problem**: Manages canonical term mappings
 
@@ -1031,8 +1031,8 @@ Route by destination:
 **Files**:
 - Schema: `delivery_targets`, `delivery_session_registry` tables
 - Console API: Target CRUD, health checks, manual dispatch
-- Frontend: `/lump/apps/prompt-forge-console/src/pages/Targets.tsx` (11KB)
-- `/lump/apps/prompt-forge/promptforge_services/delivery_dispatch.py`
+- Frontend: `prompt-forge-console/src/pages/Targets.tsx` (11KB)
+- `./promptforge_services/delivery_dispatch.py`
 
 **Problem**: Multi-target delivery infrastructure
 
@@ -1050,9 +1050,9 @@ Route by destination:
 ### LLM Provider Abstraction
 
 **Files**:
-- `/lump/apps/prompt-forge/promptforge_services/llm/router.py`
-- `/lump/apps/prompt-forge/promptforge_services/llm/providers.py`
-- `/lump/apps/prompt-forge/promptforge_services/llm/config.py`
+- `./promptforge_services/llm/router.py`
+- `./promptforge_services/llm/providers.py`
+- `./promptforge_services/llm/config.py`
 
 **Problem**: Multi-provider LLM support (OpenAI, Anthropic, Ollama, OpenAI-compatible, LMStudio, LlamaCPP)
 
@@ -1071,8 +1071,8 @@ Route by destination:
 ### n8n Workflow Integration
 
 **Files**:
-- `/lump/apps/prompt-forge/promptforge_watcher/webhook.py`
-- `/lump/apps/prompt-forge/docs/planning/n8n_workflows/`
+- `./promptforge_watcher/webhook.py`
+- `./docs/planning/n8n_workflows/`
 - Scripts: `import_n8n_workflows.sh`
 - Docker Compose: n8n service container
 
@@ -1091,7 +1091,7 @@ Route by destination:
 ### Obsidian Writeback and Folder Management
 
 **Files**:
-- `/lump/apps/prompt-forge/promptforge_watcher/writeback.py`
+- `./promptforge_watcher/writeback.py`
 - Watcher config: `PROMPTFORGE_PROCESSED_FOLDER`, `PROMPTFORGE_ERROR_FOLDER`
 
 **Problem**: Note lifecycle management across vault folders
@@ -1109,7 +1109,7 @@ Route by destination:
 
 **Files**:
 - Console API: Queue depth, throughput, SLA summary, health snapshot endpoints
-- Frontend: `/lump/apps/prompt-forge-console/src/pages/Dashboard.tsx` (11KB)
+- Frontend: `prompt-forge-console/src/pages/Dashboard.tsx` (11KB)
 
 **Problem**: Operational metrics and monitoring
 
@@ -1145,8 +1145,8 @@ Route by destination:
 ### Secrets Encryption
 
 **Files**:
-- `/lump/apps/prompt-forge/promptforge_services/secrets.py`
-- `/lump/apps/prompt-forge/promptforge_services/secrets_migration.py`
+- `./promptforge_services/secrets.py`
+- `./promptforge_services/secrets_migration.py`
 - Schema: `console_runtime_settings` with encrypted values
 
 **Problem**: Encrypt API keys in database
@@ -1181,7 +1181,7 @@ Route by destination:
 
 **Files**:
 - Console API: `/console/settings`, `/console/settings/runtime`, `/console/settings/secrets`
-- Frontend: `/lump/apps/prompt-forge-console/src/pages/Settings.tsx` (42KB - largest page)
+- Frontend: `prompt-forge-console/src/pages/Settings.tsx` (42KB - largest page)
 - Schema: `console_runtime_settings` table
 
 **Problem**: DB-backed runtime configuration
@@ -1200,27 +1200,27 @@ Route by destination:
 
 **Framework**: React 18.3 + Vite 5.4 + TypeScript 5.8
 
-**Entrypoint**: `/lump/apps/prompt-forge-console/src/main.tsx`
+**Entrypoint**: `prompt-forge-console/src/main.tsx`
 
 **Routing**: React Router DOM 6.30
-- `/lump/apps/prompt-forge-console/src/App.tsx` - Route definitions
+- `prompt-forge-console/src/App.tsx` - Route definitions
 
 **State Management**:
 - **Server state**: @tanstack/react-query (TanStack Query v5)
 - **Client state**: Zustand 4.5
-- Stores: `/lump/apps/prompt-forge-console/src/stores/`
+- Stores: `prompt-forge-console/src/stores/`
 
 **API Client**:
-- `/lump/apps/prompt-forge-console/src/services/promptforge/` - API client functions
+- `prompt-forge-console/src/services/promptforge/` - API client functions
 - Uses `fetch` API
 - Base URL from `VITE_PROMPTFORGE_API_BASE` env var or relative paths
 
 **UI Library**: Radix UI primitives (30+ packages)
 
 **Component Library**: Custom components built on Radix + Tailwind
-- `/lump/apps/prompt-forge-console/src/components/ui/` - Reusable primitives (shadcn-style)
-- `/lump/apps/prompt-forge-console/src/components/pf/` - PromptForge-specific components
-- `/lump/apps/prompt-forge-console/src/components/shell/` - Layout/shell components
+- `prompt-forge-console/src/components/ui/` - Reusable primitives (shadcn-style)
+- `prompt-forge-console/src/components/pf/` - PromptForge-specific components
+- `prompt-forge-console/src/components/shell/` - Layout/shell components
 
 **Styling**: Tailwind CSS 3.4 + tailwindcss-animate
 
@@ -1234,7 +1234,7 @@ Route by destination:
 
 ## 8. Frontend: Screens and User Flows
 
-Source: `/lump/apps/prompt-forge-console/src/pages/`
+Source: `prompt-forge-console/src/pages/`
 
 | Route | File | Purpose | Components | API Calls | Mutations | Essential |
 |-------|------|---------|-----------|-----------|-----------|-----------|
@@ -1290,7 +1290,7 @@ Source: `/lump/apps/prompt-forge-console/src/pages/`
 
 ### Component Inventory
 
-Source: `/lump/apps/prompt-forge-console/src/components/`
+Source: `prompt-forge-console/src/components/`
 
 #### UI Primitives (`/components/ui/`)
 
@@ -1393,7 +1393,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 ### Full Dashboard
 
-**Files**: `/lump/apps/prompt-forge-console/src/pages/Dashboard.tsx` (11KB)
+**Files**: `prompt-forge-console/src/pages/Dashboard.tsx` (11KB)
 
 **Features**:
 - Queue depth by status/priority
@@ -1461,7 +1461,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 ### Delivery Target Management
 
-**Files**: `/lump/apps/prompt-forge-console/src/pages/Targets.tsx` (11KB)
+**Files**: `prompt-forge-console/src/pages/Targets.tsx` (11KB)
 
 **Features**:
 - Target CRUD
@@ -1479,7 +1479,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 ### Rule Management UI
 
-**Files**: `/lump/apps/prompt-forge-console/src/pages/Rules.tsx` (25KB - largest page)
+**Files**: `prompt-forge-console/src/pages/Rules.tsx` (25KB - largest page)
 
 **Features**:
 - Ruleset picker
@@ -1499,7 +1499,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 ### Template Management UI
 
-**Files**: `/lump/apps/prompt-forge-console/src/pages/Templates.tsx` (19KB)
+**Files**: `prompt-forge-console/src/pages/Templates.tsx` (19KB)
 
 **Features**:
 - Template list
@@ -1518,7 +1518,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 ### Dictionary UI
 
-**Files**: `/lump/apps/prompt-forge-console/src/pages/Dictionary.tsx` (16KB)
+**Files**: `prompt-forge-console/src/pages/Dictionary.tsx` (16KB)
 
 **Features**:
 - Term list
@@ -1535,7 +1535,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 ### Settings UI
 
-**Files**: `/lump/apps/prompt-forge-console/src/pages/Settings.tsx` (42KB - by far the largest)
+**Files**: `prompt-forge-console/src/pages/Settings.tsx` (42KB - by far the largest)
 
 **Features**:
 - Tabbed settings (Runtime, Secrets, Kanban, Projects)
@@ -1557,7 +1557,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 ### Logs/Metrics Viewers
 
 **Files**:
-- `/lump/apps/prompt-forge-console/src/pages/Logs.tsx` (5KB)
+- `prompt-forge-console/src/pages/Logs.tsx` (5KB)
 - Dashboard metrics
 
 **Features**:
@@ -1612,7 +1612,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 ### API Client
 
-**Location**: `/lump/apps/prompt-forge-console/src/services/promptforge/`
+**Location**: `prompt-forge-console/src/services/promptforge/`
 
 **Client Files**:
 - `client.ts` - Base fetch wrapper
@@ -1716,7 +1716,7 @@ Source: `/lump/apps/prompt-forge-console/src/components/`
 
 **Backend**:
 ```bash
-cd /lump/apps/prompt-forge
+cd .
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -1730,7 +1730,7 @@ PYTHONPATH=. python3 -m promptforge_watcher
 
 **Frontend**:
 ```bash
-cd /lump/apps/prompt-forge-console
+cd prompt-forge-console
 npm install
 npm run dev
 ```
@@ -1817,7 +1817,7 @@ docker compose up -d --build
 
 ### 1. Speech Artifact Cleanup Logic
 
-**Source**: `/lump/apps/prompt-forge/promptforge_services/pipeline.py` (preprocessing)
+**Source**: `./promptforge_services/pipeline.py` (preprocessing)
 
 **Why useful**: Obsidian speech-to-text produces artifacts ("um", "uh", incorrect punctuation, etc.)
 
@@ -1842,7 +1842,7 @@ text = text.replace('wanna', 'want to')
 
 ### 2. Prompt Formatting Templates
 
-**Source**: `/lump/apps/prompt-forge/docs/planning/` (template examples)
+**Source**: `./docs/planning/` (template examples)
 
 **Why useful**: Jinja2 templates for rendering structured prompts work well
 
@@ -1898,7 +1898,7 @@ content = post.content    # str
 
 ### 4. Project Detection Rules
 
-**Source**: `/lump/apps/prompt-forge/promptforge_services/pipeline.py` (preprocessing)
+**Source**: `./promptforge_services/pipeline.py` (preprocessing)
 
 **Why useful**: Auto-detect project from directives or transcript content
 
@@ -1942,7 +1942,7 @@ def detect_project(transcript: str, known_projects: list[str]) -> str:
 
 ### 6. Prompt Preview UI
 
-**Source**: `/lump/apps/prompt-forge-console/src/components/pf/MarkdownPreview.tsx`
+**Source**: `prompt-forge-console/src/components/pf/MarkdownPreview.tsx`
 
 **Why useful**: Preview rendered markdown before delivery
 

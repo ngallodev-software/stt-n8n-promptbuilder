@@ -2,8 +2,8 @@
 
 Scope:
 
-- Frontend source: `/lump/apps/prompt-forge-console/docs/frontend-service-mapping.md`
-- Backend contract snapshot: `/lump/apps/prompt-forge/docs/api-compatibility-matrix.md`
+- Frontend source: `prompt-forge-console/docs/frontend-service-mapping.md`
+- Backend contract snapshot: `./docs/api-compatibility-matrix.md`
 
 This is a doc-to-doc comparison. It does not inspect runtime behavior.
 

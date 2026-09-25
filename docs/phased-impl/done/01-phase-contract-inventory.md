@@ -5,8 +5,8 @@ Phase 1 objective:
 Establish a hard baseline for existing contracts, endpoints, and frontend service signatures before deeper implementation.
 
 Repos:
-- /lump/apps/prompt-forge (backend)
-- /lump/apps/prompt-forge-console (frontend)
+- . (backend)
+- prompt-forge-console (frontend)
 
 Delegate these packets in parallel:
 

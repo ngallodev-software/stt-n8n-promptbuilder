@@ -8,7 +8,7 @@ The plan is directionally correct, but it is not yet safe to build against. The 
 
 ### High: Source identity and `externalTaskKey` strategy are not locked down enough
 
-The spec says Prompt Forge should define one stable `externalTaskKey` rule, but it does not pin the canonical source artifact or version boundary that key comes from. That is a problem because Kanban import replay is strict: existing tasks are only considered compatible when every imported field matches, not just the external key. See the Kanban import schema and replay check in [`/lump/apps/kanban/src/core/api-contract.ts`](/lump/apps/kanban/src/core/api-contract.ts#L309) and [`/lump/apps/kanban/src/trpc/workspace-api.ts`](/lump/apps/kanban/src/trpc/workspace-api.ts#L656).
+The spec says Prompt Forge should define one stable `externalTaskKey` rule, but it does not pin the canonical source artifact or version boundary that key comes from. That is a problem because Kanban import replay is strict: existing tasks are only considered compatible when every imported field matches, not just the external key. See the Kanban import schema and replay check in [`kanban/src/core/api-contract.ts`](kanban/src/core/api-contract.ts#L309) and [`kanban/src/trpc/workspace-api.ts`](kanban/src/trpc/workspace-api.ts#L656).
 
 Risk:
 - Any key derived from mutable rendered text, title, or review-state fields will break replay on routine Prompt Forge edits.
@@ -21,7 +21,7 @@ Suggested change:
 
 ### High: The manifest mapping is incomplete relative to the real Kanban contract
 
-The docs only require mapping for prompt text, title, baseRef, links, and start keys. The actual Kanban import contract also carries `startInPlanMode`, `autoReviewEnabled`, `autoReviewMode`, `images`, `agentId`, and `clineSettings`. Those fields are part of the imported task schema in [`/lump/apps/kanban/src/core/api-contract.ts`](/lump/apps/kanban/src/core/api-contract.ts#L309), and the replay compatibility check compares them all in [`/lump/apps/kanban/src/trpc/workspace-api.ts`](/lump/apps/kanban/src/trpc/workspace-api.ts#L656).
+The docs only require mapping for prompt text, title, baseRef, links, and start keys. The actual Kanban import contract also carries `startInPlanMode`, `autoReviewEnabled`, `autoReviewMode`, `images`, `agentId`, and `clineSettings`. Those fields are part of the imported task schema in [`kanban/src/core/api-contract.ts`](kanban/src/core/api-contract.ts#L309), and the replay compatibility check compares them all in [`kanban/src/trpc/workspace-api.ts`](kanban/src/trpc/workspace-api.ts#L656).
 
 Risk:
 - If Prompt Forge omits any of those fields without an explicit failure rule, replay will fail closed later as `conflicting_task_intent`.
@@ -34,7 +34,7 @@ Suggested change:
 
 ### High: Validation ignores partial-success semantics on start
 
-Kanban import does not behave like an all-or-nothing transaction once `startTaskExternalKeys` is used. The response can come back with `applied: true` while `ok: false` if task start later fails, and `startResults` can contain per-task failures even after the import itself has already been committed. See the start path in [`/lump/apps/kanban/src/trpc/workspace-api.ts`](/lump/apps/kanban/src/trpc/workspace-api.ts#L818).
+Kanban import does not behave like an all-or-nothing transaction once `startTaskExternalKeys` is used. The response can come back with `applied: true` while `ok: false` if task start later fails, and `startResults` can contain per-task failures even after the import itself has already been committed. See the start path in [`kanban/src/trpc/workspace-api.ts`](kanban/src/trpc/workspace-api.ts#L818).
 
 Risk:
 - The plan currently treats failure as a single harness-level apply failure, which hides the distinction between import failure and start failure.
@@ -47,7 +47,7 @@ Suggested change:
 
 ### Medium: The local target workspace binding is underspecified
 
-Kanban import is workspace-scoped. The CLI wrapper does not magically provide a global target; it resolves a workspace, ensures runtime workspace state, and then calls `workspace.importTasks` with an `x-kanban-workspace-id` header. See [`/lump/apps/kanban/src/commands/task.ts`](/lump/apps/kanban/src/commands/task.ts#L762) and the tRPC client setup in the same file.
+Kanban import is workspace-scoped. The CLI wrapper does not magically provide a global target; it resolves a workspace, ensures runtime workspace state, and then calls `workspace.importTasks` with an `x-kanban-workspace-id` header. See [`kanban/src/commands/task.ts`](kanban/src/commands/task.ts#L762) and the tRPC client setup in the same file.
 
 Risk:
 - "One local Kanban runtime target" is not enough unless the plan also defines which workspace that target is.
@@ -60,7 +60,7 @@ Suggested change:
 
 ### Medium: The UI plan can drift unless preview is backend-owned and source-bound
 
-The console plan allows previewing raw manifest JSON or a summary, but it does not require the preview payload to come from the backend service layer. It also recommends `Prompts.tsx` as the default entry point, while `IntakeDetail.tsx` is the stronger lineage boundary. See [`/lump/apps/prompt-forge-console/context/kits/cavekit-kanban-task-creation-harness-ui.md`](/lump/apps/prompt-forge-console/context/kits/cavekit-kanban-task-creation-harness-ui.md#L22) and [`/lump/apps/prompt-forge-console/context/plans/plan-kanban-task-creation-harness-ui.md`](/lump/apps/prompt-forge-console/context/plans/plan-kanban-task-creation-harness-ui.md#L16).
+The console plan allows previewing raw manifest JSON or a summary, but it does not require the preview payload to come from the backend service layer. It also recommends `Prompts.tsx` as the default entry point, while `IntakeDetail.tsx` is the stronger lineage boundary. See [`prompt-forge-console/context/kits/cavekit-kanban-task-creation-harness-ui.md`](prompt-forge-console/context/kits/cavekit-kanban-task-creation-harness-ui.md#L22) and [`prompt-forge-console/context/plans/plan-kanban-task-creation-harness-ui.md`](prompt-forge-console/context/plans/plan-kanban-task-creation-harness-ui.md#L16).
 
 Risk:
 - A prompt detail surface can be context-rich, but it is not necessarily the canonical source artifact.

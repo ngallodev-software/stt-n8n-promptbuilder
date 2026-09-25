@@ -1,9 +1,9 @@
 # Backend Settings Support Prompt
 
-You are working in the backend repo at `/lump/apps/prompt-forge`.
+You are working in the backend repo at `.`.
 
 Goal
-- Add backend settings support for the frontend console Settings page in `/lump/apps/prompt-forge-console`.
+- Add backend settings support for the frontend console Settings page in `prompt-forge-console`.
 - Preserve existing API behavior where possible.
 - Implement real server-side settings reads/writes for backend-owned runtime configuration and admin actions.
 - Do not redesign the frontend. Build the backend contract the frontend now expects.

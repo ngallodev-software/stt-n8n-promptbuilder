@@ -5,7 +5,7 @@ Phase 2 objective:
 Implement dedicated backend read endpoints with typed response schemas and server-side pagination/filtering.
 
 Repo:
-- /lump/apps/prompt-forge
+- .
 
 Parallel packets:
 

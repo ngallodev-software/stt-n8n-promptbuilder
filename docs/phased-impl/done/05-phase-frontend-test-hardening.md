@@ -5,7 +5,7 @@ Phase 5 objective:
 Add frontend service-layer confidence with strict/fallback tests, mutation invalidation checks, and robust error handling expectations.
 
 Repo:
-- /lump/apps/prompt-forge-console
+- prompt-forge-console
 
 Parallel packets:
 
